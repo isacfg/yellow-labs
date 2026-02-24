@@ -202,7 +202,7 @@ async function runStreaming(
   } else {
     // Normal text response — finalize
     const hasStylePreviews = detectStylePreviews(fullContent);
-    const hasFinalPresentation = detectFinalPresentation(fullContent);
+    const hasFinalPresentation = !hasStylePreviews && detectFinalPresentation(fullContent);
     await ctx.runMutation(internal.messages.finalize, {
       messageId: assistantMsgId,
       hasStylePreviews,

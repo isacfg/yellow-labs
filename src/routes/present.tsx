@@ -11,20 +11,27 @@ export function Present() {
 
   if (presentation === undefined) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black text-white">
-        <div className="animate-spin h-8 w-8 border-4 border-white border-t-transparent rounded-full" />
+      <div className="min-h-screen flex items-center justify-center bg-surface">
+        <div className="h-10 w-10 rounded-xl gradient-coral flex items-center justify-center animate-pulse shadow-glow-coral">
+          <span className="text-white text-sm font-bold">S</span>
+        </div>
       </div>
     );
   }
 
   if (!presentation) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
-        <div className="text-center">
-          <p className="text-6xl mb-4">404</p>
-          <p className="text-xl mb-4">Presentation not found</p>
-          <a href="/" className="text-blue-400 hover:underline">
-            Return to Slides AI
+      <div className="min-h-screen flex items-center justify-center bg-surface">
+        <div className="text-center animate-fade-in">
+          <p className="text-6xl font-bold text-gradient-coral mb-4">404</p>
+          <p className="text-text-secondary text-sm mb-6">
+            Presentation not found
+          </p>
+          <a
+            href="/"
+            className="text-sm font-semibold text-coral hover:text-coral-dark transition-colors"
+          >
+            Return to Slides AI →
           </a>
         </div>
       </div>

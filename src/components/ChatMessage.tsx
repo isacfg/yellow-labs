@@ -28,6 +28,7 @@ interface ChatMessageProps {
   presentation?: PresentationRef;
   onStyleSelect?: (index: number) => void;
   styleSelectDisabled?: boolean;
+  showFullscreen?: boolean;
   // AskUserQuestion props
   currentQuestionIdx?: number;
   pendingAnswers?: Record<number, string>;
@@ -42,6 +43,7 @@ export function ChatMessage({
   presentation,
   onStyleSelect,
   styleSelectDisabled = false,
+  showFullscreen = true,
   currentQuestionIdx,
   pendingAnswers,
   onAnswer,
@@ -110,9 +112,9 @@ export function ChatMessage({
                     questions={questions}
                     currentQuestionIdx={currentQuestionIdx ?? 0}
                     pendingAnswers={pendingAnswers ?? {}}
-                    onAnswer={onAnswer ?? (() => {})}
-                    onNext={onNext ?? (() => {})}
-                    onSubmit={onSubmit ?? (() => {})}
+                    onAnswer={onAnswer ?? (() => { })}
+                    onNext={onNext ?? (() => { })}
+                    onSubmit={onSubmit ?? (() => { })}
                     disabled={questionDisabled}
                   />
                 </>
@@ -173,6 +175,7 @@ export function ChatMessage({
                       slug={presentation.slug}
                       title={presentation.title}
                       htmlContent={presentation.htmlContent}
+                      showFullscreen={showFullscreen}
                     />
                   ) : (
                     <div className="text-sm text-text-secondary flex items-center gap-2 bg-surface-elevated rounded-2xl px-4 py-3 border border-border-light">

@@ -21,8 +21,10 @@ export function Chat() {
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+    <div className="min-h-screen flex items-center justify-center bg-surface">
+      <div className="h-10 w-10 rounded-xl gradient-coral flex items-center justify-center animate-pulse shadow-glow-coral">
+        <span className="text-white text-sm font-bold">S</span>
+      </div>
     </div>
   );
 }

@@ -1,14 +1,16 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 
 type AuthMode = "signIn" | "signUp";
 
 export function AuthForm() {
   const { signIn } = useAuthActions();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<AuthMode>("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,74 +22,93 @@ export function AuthForm() {
     setError(null);
     setLoading(true);
     try {
-      await signIn("password", {
+      const result = await signIn("password", {
         email,
         password,
         flow: mode === "signIn" ? "signIn" : "signUp",
       });
+      if (result.signingIn) {
+        navigate("/dashboard", { replace: true, state: { fromAuth: true, at: Date.now() } });
+      }
+      setLoading(false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Authentication failed");
-    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader>
-        <CardTitle>{mode === "signIn" ? "Sign in" : "Create account"}</CardTitle>
-        <CardDescription>
-          {mode === "signIn"
-            ? "Welcome back! Sign in to access your presentations."
-            : "Create an account to start building beautiful presentations."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              disabled={loading}
-            />
+    <div className="w-full">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label
+            htmlFor="email"
+            className="text-xs font-medium text-text-secondary uppercase tracking-wider"
+          >
+            Email
+          </Label>
+          <Input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            required
+            disabled={loading}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label
+            htmlFor="password"
+            className="text-xs font-medium text-text-secondary uppercase tracking-wider"
+          >
+            Password
+          </Label>
+          <Input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+            disabled={loading}
+            minLength={8}
+          />
+        </div>
+
+        {error && (
+          <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 animate-scale-in">
+            <p className="text-sm text-red-600">{error}</p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              disabled={loading}
-              minLength={8}
-            />
-          </div>
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
+        )}
+
+        <Button
+          type="submit"
+          className="w-full h-12 rounded-xl font-medium text-base mt-2"
+          disabled={loading}
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : mode === "signIn" ? (
+            "Sign in"
+          ) : (
+            "Create account"
           )}
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading
-              ? "Please wait..."
-              : mode === "signIn"
-              ? "Sign in"
-              : "Create account"}
-          </Button>
-        </form>
-        <div className="mt-4 text-center text-sm">
+        </Button>
+      </form>
+
+      <div className="mt-6 text-center">
+        <p className="text-sm text-text-secondary">
           {mode === "signIn" ? (
             <>
               Don't have an account?{" "}
               <button
                 type="button"
-                onClick={() => setMode("signUp")}
-                className="text-primary hover:underline font-medium"
+                onClick={() => {
+                  setMode("signUp");
+                  setError(null);
+                }}
+                className="font-semibold text-coral hover:text-coral-dark transition-colors"
               >
                 Sign up
               </button>
@@ -97,15 +118,18 @@ export function AuthForm() {
               Already have an account?{" "}
               <button
                 type="button"
-                onClick={() => setMode("signIn")}
-                className="text-primary hover:underline font-medium"
+                onClick={() => {
+                  setMode("signIn");
+                  setError(null);
+                }}
+                className="font-semibold text-coral hover:text-coral-dark transition-colors"
               >
                 Sign in
               </button>
             </>
           )}
-        </div>
-      </CardContent>
-    </Card>
+        </p>
+      </div>
+    </div>
   );
 }

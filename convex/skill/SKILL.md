@@ -458,6 +458,9 @@ For projects with multiple presentations:
 
 ### HTML Architecture
 
+**CRITICAL REQUIREMENT:** When generating this structure, you MUST apply the exact `font-family`, CSS variables, colors, and styling patterns from the specific style preview the user chose in Phase 2. 
+**DO NOT** blindly copy the placeholder fonts like 'Clash Display' or the example color variables below. Preserve the original font and aesthetic that you created for the preview!
+
 Follow this structure for all presentations:
 
 ```html
@@ -468,16 +471,18 @@ Follow this structure for all presentations:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Presentation Title</title>
 
-    <!-- Fonts (use Fontshare or Google Fonts) -->
+    <!-- Fonts (CRITICAL: Load the exact fonts from the chosen style preview) -->
     <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=...">
 
     <style>
         /* ===========================================
            CSS CUSTOM PROPERTIES (THEME)
-           Easy to modify: change these to change the whole look
+           CRITICAL: DO NOT copy these example values. 
+           Change these to match the exact font and colors
+           from the style option the user chose!
            =========================================== */
         :root {
-            /* Colors */
+            /* Colors - Use from chosen style preview! */
             --bg-primary: #0a0f1c;
             --bg-secondary: #111827;
             --text-primary: #ffffff;
@@ -485,7 +490,8 @@ Follow this structure for all presentations:
             --accent: #00ffcc;
             --accent-glow: rgba(0, 255, 204, 0.3);
 
-            /* Typography - MUST use clamp() for responsive scaling */
+            /* Typography - MUST use clamp() for responsive scaling.
+               CRITICAL: Use the exact font-family from the chosen preview! */
             --font-display: 'Clash Display', sans-serif;
             --font-body: 'Satoshi', sans-serif;
             --title-size: clamp(2rem, 6vw, 5rem);

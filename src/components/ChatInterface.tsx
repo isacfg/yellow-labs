@@ -108,35 +108,51 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
             </p>
           </div>
         )}
-        {messages.map((msg: (typeof messages)[number]) => {
-          const isLastStylePreview =
-            msg.hasStylePreviews &&
-            messages.filter((m: (typeof messages)[number]) => m.hasStylePreviews).at(-1)?._id === msg._id;
-
-          return (
-            <ChatMessage
-              key={msg._id}
-              message={msg}
-              presentation={
-                msg.hasFinalPresentation && !msg.isStreaming && presentation
-                  ? presentation
-                  : undefined
-              }
-              onStyleSelect={isLastStylePreview ? handleStyleSelect : undefined}
-              styleSelectDisabled={styleSelectDisabled || isSending || isStreaming}
-              currentQuestionIdx={msg._id === lastUnansweredToolCallId ? currentQuestionIdx : 0}
-              pendingAnswers={msg._id === lastUnansweredToolCallId ? pendingAnswers : {}}
-              onAnswer={msg._id === lastUnansweredToolCallId ? handleAnswer : undefined}
-              onNext={msg._id === lastUnansweredToolCallId ? handleNext : undefined}
-              onSubmit={
-                msg._id === lastUnansweredToolCallId && msg.toolCallId
-                  ? () => handleSubmitAnswers(msg.toolCallId!)
-                  : undefined
-              }
-              questionDisabled={isSending || isStreaming}
-            />
+        {(() => {
+          // Pre-compute outside the per-message loop
+          const finalPresentationMessages = messages.filter(
+            (m: (typeof messages)[number]) => m.hasFinalPresentation
           );
-        })}
+          const lastFinalPresentationId = finalPresentationMessages.at(-1)?._id;
+
+          const stylePreviewMsgs = messages.filter(
+            (m: (typeof messages)[number]) => m.hasStylePreviews
+          );
+          const lastStylePreviewId = stylePreviewMsgs.at(-1)?._id;
+
+          return messages.map((msg: (typeof messages)[number]) => {
+            const isLastStylePreview =
+              msg.hasStylePreviews && msg._id === lastStylePreviewId;
+
+            const isLastFinalPresentation =
+              msg.hasFinalPresentation && msg._id === lastFinalPresentationId;
+
+            return (
+              <ChatMessage
+                key={msg._id}
+                message={msg}
+                presentation={
+                  msg.hasFinalPresentation && !msg.isStreaming && presentation
+                    ? presentation
+                    : undefined
+                }
+                onStyleSelect={isLastStylePreview ? handleStyleSelect : undefined}
+                styleSelectDisabled={styleSelectDisabled || isSending || isStreaming}
+                showFullscreen={isLastFinalPresentation}
+                currentQuestionIdx={msg._id === lastUnansweredToolCallId ? currentQuestionIdx : 0}
+                pendingAnswers={msg._id === lastUnansweredToolCallId ? pendingAnswers : {}}
+                onAnswer={msg._id === lastUnansweredToolCallId ? handleAnswer : undefined}
+                onNext={msg._id === lastUnansweredToolCallId ? handleNext : undefined}
+                onSubmit={
+                  msg._id === lastUnansweredToolCallId && msg.toolCallId
+                    ? () => handleSubmitAnswers(msg.toolCallId!)
+                    : undefined
+                }
+                questionDisabled={isSending || isStreaming}
+              />
+            );
+          });
+        })()}
         <div ref={bottomRef} />
       </div>
 

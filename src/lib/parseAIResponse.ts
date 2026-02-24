@@ -4,6 +4,16 @@ export type ParsedResponse =
   | { type: "finalPresentation"; html: string; textBefore: string };
 
 export function parseAIResponse(content: string): ParsedResponse {
+  // Check for style previews: 3 HTML fenced code blocks FIRST
+  const htmlBlockRegex = /```html\n([\s\S]*?)```/g;
+  const blocks: string[] = [];
+  for (const m of content.matchAll(htmlBlockRegex)) {
+    blocks.push(m[1]);
+  }
+  if (blocks.length >= 3) {
+    return { type: "stylePreviews", previews: blocks.slice(0, 3) };
+  }
+
   // Check for final presentation: single large <!DOCTYPE html> block
   const doctypeIndex = content.search(/<!DOCTYPE html>/i);
   if (doctypeIndex !== -1) {
@@ -12,16 +22,6 @@ export function parseAIResponse(content: string): ParsedResponse {
       const textBefore = content.slice(0, doctypeIndex).trim();
       return { type: "finalPresentation", html: htmlContent, textBefore };
     }
-  }
-
-  // Check for style previews: 3 HTML fenced code blocks
-  const htmlBlockRegex = /```html\n([\s\S]*?)```/g;
-  const blocks: string[] = [];
-  for (const m of content.matchAll(htmlBlockRegex)) {
-    blocks.push(m[1]);
-  }
-  if (blocks.length >= 3) {
-    return { type: "stylePreviews", previews: blocks.slice(0, 3) };
   }
 
   // Regular text
