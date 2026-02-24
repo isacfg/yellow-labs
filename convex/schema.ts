@@ -20,6 +20,10 @@ export default defineSchema({
     hasStylePreviews: v.boolean(),
     hasFinalPresentation: v.boolean(),
     createdAt: v.number(),
+    // Tool use fields (optional — only set when Claude calls AskUserQuestion)
+    toolCallId: v.optional(v.string()),      // Anthropic tool_use id
+    toolCallInput: v.optional(v.string()),   // JSON of the questions array
+    toolResultFor: v.optional(v.string()),   // tool_use_id this row answers
   }).index("by_conversation", ["conversationId"]),
 
   presentations: defineTable({
