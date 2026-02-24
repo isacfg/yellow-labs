@@ -1,8 +1,9 @@
-import { query } from "./_generated/server";
+import { query, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
-export const getAuthUserId = query({
+// Internal: used by actions to retrieve the current user's ID
+export const currentUserId = internalQuery({
   args: {},
   returns: v.union(v.id("users"), v.null()),
   handler: async (ctx) => {

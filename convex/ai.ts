@@ -37,7 +37,7 @@ export const sendMessage = action({
   returns: v.null(),
   handler: async (ctx, args) => {
     // 1. Auth check
-    const userId = await ctx.runQuery(api.users.getAuthUserId);
+    const userId = await ctx.runQuery(internal.users.currentUserId);
     if (!userId) throw new Error("Not authenticated");
 
     // 2. Save user message
