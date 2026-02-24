@@ -77,7 +77,7 @@ export function Dashboard() {
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-12">
-            {presentations.map((p) => (
+            {presentations.map((p: (typeof presentations)[number]) => (
               <Card key={p._id} className="hover:shadow-md transition-shadow">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base truncate">{p.title}</CardTitle>
@@ -113,7 +113,7 @@ export function Dashboard() {
           <div>
             <h2 className="text-lg font-semibold mb-4">Recent conversations</h2>
             <div className="space-y-2">
-              {conversations.slice(0, 5).map((c) => (
+              {conversations.slice(0, 5).map((c: (typeof conversations)[number]) => (
                 <Link
                   key={c._id}
                   to={`/chat/${c._id}`}

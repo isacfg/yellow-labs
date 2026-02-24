@@ -1,5 +1,4 @@
 import {
-  mutation,
   query,
   internalMutation,
 } from "./_generated/server";

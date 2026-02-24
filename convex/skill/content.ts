@@ -1,5 +1,5 @@
 // Auto-generated from SKILL.md and STYLE_PRESETS.md
-// Do not edit manually - edit the source markdown files
+// Do not edit manually
 
 export const SKILL_MD = `---
 name: frontend-slides
@@ -1629,6 +1629,4 @@ Test at these viewport sizes:
 Use browser DevTools responsive mode to quickly test multiple sizes.
 `;
 
-export const SYSTEM_PROMPT = SKILL_MD + "
-
-" + STYLE_PRESETS_MD;
+export const SYSTEM_PROMPT = SKILL_MD + "\n\n" + STYLE_PRESETS_MD;

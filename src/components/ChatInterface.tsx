@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -10,7 +10,8 @@ interface ChatInterfaceProps {
 }
 
 export function ChatInterface({ conversationId }: ChatInterfaceProps) {
-  const messages = useQuery(api.messages.list, { conversationId }) ?? [];
+  const rawMessages = useQuery(api.messages.list, { conversationId });
+  const messages = useMemo(() => rawMessages ?? [], [rawMessages]);
   const presentation = useQuery(api.presentations.getByConversation, {
     conversationId,
   });
@@ -24,7 +25,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const isStreaming = messages.some((m) => m.isStreaming);
+  const isStreaming = messages.some((m: (typeof messages)[number]) => m.isStreaming);
 
   const handleSend = async (content: string) => {
     if (isSending || isStreaming) return;
@@ -54,10 +55,10 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
             <p>What's the topic, audience, and tone you're going for?</p>
           </div>
         )}
-        {messages.map((msg) => {
+        {messages.map((msg: (typeof messages)[number]) => {
           const isLastStylePreview =
             msg.hasStylePreviews &&
-            messages.filter((m) => m.hasStylePreviews).at(-1)?._id === msg._id;
+            messages.filter((m: (typeof messages)[number]) => m.hasStylePreviews).at(-1)?._id === msg._id;
 
           return (
             <ChatMessage
