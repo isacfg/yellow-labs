@@ -1,73 +1,68 @@
-# React + TypeScript + Vite
+# Slides AI — Frontend Slides SaaS
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+AI-powered HTML presentation generator. Describe your topic, choose a visual style, and get a stunning, animation-rich HTML presentation.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Frontend**: Vite + React 18 + TypeScript + TailwindCSS + shadcn/ui
+- **Backend/DB**: Convex (reactive, streaming)
+- **Auth**: Convex Auth (email/password)
+- **AI**: Anthropic Claude (claude-sonnet-4-6) via Convex Actions
 
-## React Compiler
+## Setup
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 1. Initialize Convex
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npx convex dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Follow the prompts to create a Convex account and project. This will populate `.env.local` with `VITE_CONVEX_URL`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### 2. Set Anthropic API Key
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npx convex env set ANTHROPIC_API_KEY sk-ant-...
+```
+
+This key lives only in Convex — never exposed to the browser.
+
+### 3. Run Development
+
+In two terminals:
+
+```bash
+# Terminal 1: Convex backend (keep running)
+npx convex dev
+
+# Terminal 2: Vite frontend
+npm run dev
+```
+
+Visit http://localhost:5173
+
+## Usage Flow
+
+1. Sign up at `/auth`
+2. Go to `/chat` to start a new presentation
+3. Describe your topic, audience, and goals
+4. Claude responds with **3 style previews** — click one to select it
+5. Claude generates the full presentation
+6. View at `/p/{slug}`, download as `.html`, or copy share link
+7. Access all your presentations from `/dashboard`
+
+## Updating Skill Content
+
+If you update `convex/skill/SKILL.md` or `convex/skill/STYLE_PRESETS.md`, regenerate `content.ts`:
+
+```bash
+python3 -c "
+import json
+with open('convex/skill/SKILL.md') as f: skill = f.read()
+with open('convex/skill/STYLE_PRESETS.md') as f: presets = f.read()
+def esc(s): return s.replace('\`', '\\\`').replace('\${', '\\\${')
+out = '// Auto-generated\\nexport const SKILL_MD = \`' + esc(skill) + '\`;\\nexport const STYLE_PRESETS_MD = \`' + esc(presets) + '\`;\\nexport const SYSTEM_PROMPT = SKILL_MD + \"\\\\n\\\\n\" + STYLE_PRESETS_MD;\\n'
+with open('convex/skill/content.ts', 'w') as f: f.write(out)
+print('Done')
+"
 ```
