@@ -20,6 +20,9 @@ export const list = query({
       hasStylePreviews: v.boolean(),
       hasFinalPresentation: v.boolean(),
       createdAt: v.number(),
+      toolCallId: v.optional(v.string()),
+      toolCallInput: v.optional(v.string()),
+      toolResultFor: v.optional(v.string()),
     })
   ),
   handler: async (ctx, args) => {
@@ -113,8 +116,13 @@ export const listForAI = internalQuery({
   args: { conversationId: v.id("conversations") },
   returns: v.array(
     v.object({
+      _id: v.id("messages"),
       role: v.union(v.literal("user"), v.literal("assistant")),
       content: v.string(),
+      isStreaming: v.boolean(),
+      toolCallId: v.optional(v.string()),
+      toolCallInput: v.optional(v.string()),
+      toolResultFor: v.optional(v.string()),
     })
   ),
   handler: async (ctx, args) => {
@@ -127,6 +135,52 @@ export const listForAI = internalQuery({
       .collect();
     return msgs
       .filter((m) => !m.isStreaming || m.content.length > 0)
-      .map((m) => ({ role: m.role, content: m.content }));
+      .map((m) => ({
+        _id: m._id,
+        role: m.role,
+        content: m.content,
+        isStreaming: m.isStreaming,
+        toolCallId: m.toolCallId,
+        toolCallInput: m.toolCallInput,
+        toolResultFor: m.toolResultFor,
+      }));
+  },
+});
+
+export const saveToolCall = internalMutation({
+  args: {
+    messageId: v.id("messages"),
+    toolCallId: v.string(),
+    toolCallInput: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.messageId, {
+      toolCallId: args.toolCallId,
+      toolCallInput: args.toolCallInput,
+      isStreaming: false,
+    });
+    return null;
+  },
+});
+
+export const saveToolResult = internalMutation({
+  args: {
+    conversationId: v.id("conversations"),
+    toolCallId: v.string(),
+    content: v.string(),
+  },
+  returns: v.id("messages"),
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("messages", {
+      conversationId: args.conversationId,
+      role: "user",
+      content: args.content,
+      isStreaming: false,
+      hasStylePreviews: false,
+      hasFinalPresentation: false,
+      createdAt: Date.now(),
+      toolResultFor: args.toolCallId,
+    });
   },
 });
