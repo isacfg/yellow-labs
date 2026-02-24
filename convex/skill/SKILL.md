@@ -405,53 +405,34 @@ Based on their mood selection, generate **3 distinct style previews** as mini HT
 
 ### Step 2.3: Present Previews
 
-Create the previews in: `.claude-design/slide-previews/`
+**IMPORTANT — SaaS Web App context:** You are running inside a web chat UI, not Claude Code. You cannot write files. Instead, output the 3 style previews as **fenced HTML code blocks directly in your message**. The UI will automatically render them as clickable visual previews side-by-side.
+
+Each preview should be:
+- Self-contained (inline CSS/JS, no external dependencies)
+- A single animated title slide showing the aesthetic (typography, color palette, motion style)
+- ~50-100 lines — do NOT generate a full presentation yet
+
+Output your message in exactly this format (brief intro, then 3 code blocks, nothing after):
 
 ```
-.claude-design/slide-previews/
-├── style-a.html   # First style option
-├── style-b.html   # Second style option
-├── style-c.html   # Third style option
-└── assets/        # Any shared assets
+Here are 3 style options for your [topic]:
+
+**Option 1 — [Name]:** [1 sentence vibe description]
+
+[html code block with the preview]
+
+**Option 2 — [Name]:** [1 sentence vibe description]
+
+[html code block with the preview]
+
+**Option 3 — [Name]:** [1 sentence vibe description]
+
+[html code block with the preview]
+
+Click the one you like to select it, then I'll build the full presentation.
 ```
 
-Each preview file should be:
-- Self-contained (inline CSS/JS)
-- A single "title slide" showing the aesthetic
-- Animated to demonstrate motion style
-- ~50-100 lines, not a full presentation
-
-Present to user:
-```
-I've created 3 style previews for you to compare:
-
-**Style A: [Name]** — [1 sentence description]
-**Style B: [Name]** — [1 sentence description]
-**Style C: [Name]** — [1 sentence description]
-
-Open each file to see them in action:
-- .claude-design/slide-previews/style-a.html
-- .claude-design/slide-previews/style-b.html
-- .claude-design/slide-previews/style-c.html
-
-Take a look and tell me:
-1. Which style resonates most?
-2. What do you like about it?
-3. Anything you'd change?
-```
-
-Then use AskUserQuestion:
-
-**Question: Pick Your Style**
-- Header: "Style"
-- Question: "Which style preview do you prefer?"
-- Options:
-  - "Style A: [Name]" — [Brief description]
-  - "Style B: [Name]" — [Brief description]
-  - "Style C: [Name]" — [Brief description]
-  - "Mix elements" — Combine aspects from different styles
-
-If "Mix elements", ask for specifics.
+**CRITICAL: Do NOT call AskUserQuestion after outputting the previews.** The user clicks directly in the UI to choose. Simply wait — when they respond with "I choose option 1/2/3", proceed to Phase 3 to generate the full presentation.
 
 ---
 
