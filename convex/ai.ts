@@ -136,10 +136,22 @@ async function runStreaming(
   convTitle: string | undefined,
 ): Promise<void> {
   let fullContent = "";
+  let textBuffer = "";
   let toolUseId = "";
   let toolUseName = "";
   let toolInputJson = "";
   let isCollectingTool = false;
+
+  // Flush accumulated text to DB. Batching reduces mutation calls ~100x,
+  // avoiding Convex's per-action mutation limit during long responses.
+  const flushText = async () => {
+    if (!textBuffer) return;
+    await ctx.runMutation(internal.messages.appendStream, {
+      messageId: assistantMsgId,
+      chunk: textBuffer,
+    });
+    textBuffer = "";
+  };
 
   const stream = await client.messages.stream({
     model: "claude-sonnet-4-6",
@@ -152,6 +164,7 @@ async function runStreaming(
   for await (const chunk of stream) {
     if (chunk.type === "content_block_start") {
       if (chunk.content_block.type === "tool_use") {
+        await flushText();
         isCollectingTool = true;
         toolUseId = chunk.content_block.id;
         toolUseName = chunk.content_block.name;
@@ -161,10 +174,10 @@ async function runStreaming(
       if (chunk.delta.type === "text_delta") {
         const text = chunk.delta.text;
         fullContent += text;
-        await ctx.runMutation(internal.messages.appendStream, {
-          messageId: assistantMsgId,
-          chunk: text,
-        });
+        textBuffer += text;
+        if (textBuffer.length >= 100) {
+          await flushText();
+        }
       } else if (chunk.delta.type === "input_json_delta") {
         toolInputJson += chunk.delta.partial_json;
       }
@@ -174,6 +187,9 @@ async function runStreaming(
       }
     }
   }
+
+  // Flush any remaining buffered text
+  await flushText();
 
   if (toolUseId) {
     // Claude called AskUserQuestion — save tool call and pause
