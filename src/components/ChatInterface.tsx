@@ -4,6 +4,7 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { ChatMessage } from "./ChatMessage";
 import { MessageInput } from "./MessageInput";
+import { Sparkles } from "lucide-react";
 
 interface ChatInterfaceProps {
   conversationId: Id<"conversations">;
@@ -16,9 +17,12 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     conversationId,
   });
   const sendMessage = useAction(api.ai.sendMessage);
+  const answerQuestion = useAction(api.ai.answerQuestion);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [isSending, setIsSending] = useState(false);
   const [styleSelectDisabled, setStyleSelectDisabled] = useState(false);
+  const [pendingAnswers, setPendingAnswers] = useState<Record<number, string>>({});
+  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
 
   // Auto-scroll on new content
   useEffect(() => {
@@ -26,6 +30,18 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   }, [messages]);
 
   const isStreaming = messages.some((m: (typeof messages)[number]) => m.isStreaming);
+
+  const lastUnansweredToolCallId = useMemo(() => {
+    const answeredIds = new Set(
+      messages
+        .filter((m: (typeof messages)[number]) => m.toolResultFor)
+        .map((m: (typeof messages)[number]) => m.toolResultFor)
+    );
+    const toolCallMsgs = messages.filter(
+      (m: (typeof messages)[number]) => m.toolCallId && !answeredIds.has(m.toolCallId)
+    );
+    return toolCallMsgs.at(-1)?._id ?? null;
+  }, [messages]);
 
   const handleSend = async (content: string) => {
     if (isSending || isStreaming) return;
@@ -44,15 +60,51 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     await handleSend(`I choose option ${index + 1}`);
   };
 
+  const handleAnswer = (questionIdx: number, label: string) => {
+    setPendingAnswers((prev) => ({ ...prev, [questionIdx]: label }));
+  };
+
+  const handleNext = () => {
+    setCurrentQuestionIdx((i) => i + 1);
+  };
+
+  const handleSubmitAnswers = async (toolCallId: string) => {
+    const answersText = Object.entries(pendingAnswers)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([, label]) => label)
+      .join("\n");
+
+    setIsSending(true);
+    setPendingAnswers({});
+    setCurrentQuestionIdx(0);
+    try {
+      await answerQuestion({
+        conversationId,
+        toolCallId,
+        answers: answersText,
+      });
+    } catch (err) {
+      console.error("Failed to submit answers:", err);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
+      <div className="flex-1 overflow-y-auto px-6 py-8 max-w-3xl mx-auto w-full">
         {messages.length === 0 && (
-          <div className="text-center text-muted-foreground text-sm py-12">
-            <p className="text-4xl mb-4">✨</p>
-            <p className="font-medium mb-1">Tell me about your presentation</p>
-            <p>What's the topic, audience, and tone you're going for?</p>
+          <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
+            <div className="h-14 w-14 rounded-2xl gradient-coral flex items-center justify-center mb-5 shadow-glow-coral">
+              <Sparkles className="h-6 w-6 text-white" />
+            </div>
+            <h2 className="text-xl font-bold mb-2 tracking-tight">
+              What will you present today?
+            </h2>
+            <p className="text-text-secondary text-sm max-w-xs leading-relaxed">
+              Describe your topic, audience, and goals — I'll create something beautiful.
+            </p>
           </div>
         )}
         {messages.map((msg: (typeof messages)[number]) => {
@@ -70,9 +122,17 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
                   : undefined
               }
               onStyleSelect={isLastStylePreview ? handleStyleSelect : undefined}
-              styleSelectDisabled={
-                styleSelectDisabled || isSending || isStreaming
+              styleSelectDisabled={styleSelectDisabled || isSending || isStreaming}
+              currentQuestionIdx={msg._id === lastUnansweredToolCallId ? currentQuestionIdx : 0}
+              pendingAnswers={msg._id === lastUnansweredToolCallId ? pendingAnswers : {}}
+              onAnswer={msg._id === lastUnansweredToolCallId ? handleAnswer : undefined}
+              onNext={msg._id === lastUnansweredToolCallId ? handleNext : undefined}
+              onSubmit={
+                msg._id === lastUnansweredToolCallId && msg.toolCallId
+                  ? () => handleSubmitAnswers(msg.toolCallId!)
+                  : undefined
               }
+              questionDisabled={isSending || isStreaming}
             />
           );
         })}
