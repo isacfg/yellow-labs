@@ -175,7 +175,7 @@ async function runStreaming(
         const text = chunk.delta.text;
         fullContent += text;
         textBuffer += text;
-        if (textBuffer.length >= 100) {
+        if (textBuffer.length >= 1000) {
           await flushText();
         }
       } else if (chunk.delta.type === "input_json_delta") {
