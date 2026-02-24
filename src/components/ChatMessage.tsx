@@ -1,7 +1,9 @@
 import { parseAIResponse } from "@/lib/parseAIResponse";
 import { StylePreviewGrid } from "./StylePreviewGrid";
 import { PresentationCard } from "./PresentationCard";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
+import { AskUserQuestionCard } from "./AskUserQuestionCard";
+import type { AskUserQuestion } from "./AskUserQuestionCard";
 
 interface Message {
   _id: string;
@@ -10,6 +12,9 @@ interface Message {
   isStreaming: boolean;
   hasStylePreviews: boolean;
   hasFinalPresentation: boolean;
+  toolCallId?: string;
+  toolCallInput?: string;
+  toolResultFor?: string;
 }
 
 interface PresentationRef {
@@ -23,6 +28,13 @@ interface ChatMessageProps {
   presentation?: PresentationRef;
   onStyleSelect?: (index: number) => void;
   styleSelectDisabled?: boolean;
+  // AskUserQuestion props
+  currentQuestionIdx?: number;
+  pendingAnswers?: Record<number, string>;
+  onAnswer?: (questionIdx: number, label: string) => void;
+  onNext?: () => void;
+  onSubmit?: () => void;
+  questionDisabled?: boolean;
 }
 
 export function ChatMessage({
@@ -30,13 +42,22 @@ export function ChatMessage({
   presentation,
   onStyleSelect,
   styleSelectDisabled = false,
+  currentQuestionIdx,
+  pendingAnswers,
+  onAnswer,
+  onNext,
+  onSubmit,
+  questionDisabled = false,
 }: ChatMessageProps) {
+  // Hidden tool result messages — only exist for conversation history
+  if (message.toolResultFor) return null;
+
   const isUser = message.role === "user";
 
   if (isUser) {
     return (
-      <div className="flex justify-end mb-4">
-        <div className="max-w-[80%] rounded-2xl rounded-tr-sm bg-primary text-primary-foreground px-4 py-2.5 text-sm">
+      <div className="flex justify-end mb-5 animate-scale-in">
+        <div className="max-w-[78%] rounded-2xl rounded-tr-md bg-coral text-white px-4 py-3 text-sm leading-relaxed shadow-sm">
           {message.content}
         </div>
       </div>
@@ -47,76 +68,119 @@ export function ChatMessage({
   const parsed = parseAIResponse(message.content);
 
   return (
-    <div className="flex justify-start mb-4">
-      <div className="max-w-[90%] w-full">
-        {/* Avatar */}
-        <div className="flex items-center gap-2 mb-1">
-          <div className="h-6 w-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold">
-            S
+    <div className="flex justify-start mb-5 animate-fade-in">
+      <div className="max-w-[92%] w-full">
+        {/* Avatar row */}
+        <div className="flex items-center gap-2.5 mb-2.5">
+          <div className="h-7 w-7 rounded-lg gradient-coral flex items-center justify-center shrink-0 shadow-sm">
+            <Sparkles className="h-3.5 w-3.5 text-white" />
           </div>
-          <span className="text-xs text-muted-foreground">Slides AI</span>
+          <span className="text-xs text-text-secondary font-semibold">Slides AI</span>
           {message.isStreaming && (
-            <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+            <div className="flex items-center gap-1.5">
+              <div className="flex gap-0.5">
+                <div className="h-1.5 w-1.5 rounded-full bg-coral animate-bounce" style={{ animationDelay: "0ms" }} />
+                <div className="h-1.5 w-1.5 rounded-full bg-coral animate-bounce" style={{ animationDelay: "150ms" }} />
+                <div className="h-1.5 w-1.5 rounded-full bg-coral animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+            </div>
           )}
         </div>
 
         {/* Content */}
-        <div className="ml-8">
-          {parsed.type === "text" && (
-            <div className="text-sm whitespace-pre-wrap text-foreground leading-relaxed">
-              {message.content}
-              {message.isStreaming && (
-                <span className="inline-block w-2 h-4 bg-foreground/50 animate-pulse ml-0.5" />
-              )}
-            </div>
-          )}
+        <div className="ml-9">
+          {/* AskUserQuestion tool call — render as interactive question card */}
+          {message.toolCallId && message.toolCallInput && (() => {
+            let questions: AskUserQuestion[] = [];
+            try {
+              const parsed = JSON.parse(message.toolCallInput) as { questions: AskUserQuestion[] };
+              questions = parsed.questions ?? [];
+            } catch {
+              // malformed JSON — fall through to text render below
+            }
+            if (questions.length > 0) {
+              return (
+                <>
+                  {message.content && (
+                    <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap mb-3 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                      {message.content}
+                    </div>
+                  )}
+                  <AskUserQuestionCard
+                    questions={questions}
+                    currentQuestionIdx={currentQuestionIdx ?? 0}
+                    pendingAnswers={pendingAnswers ?? {}}
+                    onAnswer={onAnswer ?? (() => {})}
+                    onNext={onNext ?? (() => {})}
+                    onSubmit={onSubmit ?? (() => {})}
+                    disabled={questionDisabled}
+                  />
+                </>
+              );
+            }
+            return null;
+          })()}
 
-          {parsed.type === "stylePreviews" && (
+          {/* Normal text/stylePreviews/finalPresentation — only if no tool call */}
+          {!message.toolCallId && (
             <>
-              {/* Show any text before the code blocks */}
-              {message.content.split("```html")[0].trim() && (
-                <div className="text-sm whitespace-pre-wrap text-foreground leading-relaxed mb-3">
-                  {message.content.split("```html")[0].trim()}
+              {parsed.type === "text" && (
+                <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                  {message.content}
+                  {message.isStreaming && (
+                    <span className="inline-block w-[2px] h-3.5 bg-coral animate-pulse ml-0.5 rounded-full" />
+                  )}
                 </div>
               )}
-              {!message.isStreaming && onStyleSelect && (
-                <StylePreviewGrid
-                  previews={parsed.previews}
-                  onSelect={onStyleSelect}
-                  disabled={styleSelectDisabled}
-                />
-              )}
-              {message.isStreaming && (
-                <div className="text-sm text-muted-foreground italic">
-                  Generating style previews...
-                  <Loader2 className="inline h-3 w-3 animate-spin ml-1" />
-                </div>
-              )}
-            </>
-          )}
 
-          {parsed.type === "finalPresentation" && (
-            <>
-              {parsed.textBefore && (
-                <div className="text-sm whitespace-pre-wrap text-foreground leading-relaxed mb-3">
-                  {parsed.textBefore}
-                </div>
+              {parsed.type === "stylePreviews" && (
+                <>
+                  {message.content.split("```html")[0].trim() && (
+                    <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap mb-4 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                      {message.content.split("```html")[0].trim()}
+                    </div>
+                  )}
+                  {!message.isStreaming && onStyleSelect && (
+                    <StylePreviewGrid
+                      previews={parsed.previews}
+                      onSelect={onStyleSelect}
+                      disabled={styleSelectDisabled}
+                    />
+                  )}
+                  {message.isStreaming && (
+                    <div className="text-sm text-text-secondary flex items-center gap-2 bg-surface-elevated rounded-2xl px-4 py-3 border border-border-light">
+                      <Loader2 className="h-4 w-4 animate-spin text-coral" />
+                      Generating style previews…
+                    </div>
+                  )}
+                </>
               )}
-              {message.isStreaming ? (
-                <div className="text-sm text-muted-foreground italic">
-                  Generating your presentation...
-                  <Loader2 className="inline h-3 w-3 animate-spin ml-1" />
-                </div>
-              ) : presentation ? (
-                <PresentationCard
-                  slug={presentation.slug}
-                  title={presentation.title}
-                  htmlContent={presentation.htmlContent}
-                />
-              ) : (
-                <div className="text-sm text-muted-foreground">
-                  Saving your presentation...
-                </div>
+
+              {parsed.type === "finalPresentation" && (
+                <>
+                  {parsed.textBefore && (
+                    <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap mb-4 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                      {parsed.textBefore}
+                    </div>
+                  )}
+                  {message.isStreaming ? (
+                    <div className="text-sm text-text-secondary flex items-center gap-2 bg-surface-elevated rounded-2xl px-4 py-3 border border-border-light">
+                      <Loader2 className="h-4 w-4 animate-spin text-coral" />
+                      Generating your presentation…
+                    </div>
+                  ) : presentation ? (
+                    <PresentationCard
+                      slug={presentation.slug}
+                      title={presentation.title}
+                      htmlContent={presentation.htmlContent}
+                    />
+                  ) : (
+                    <div className="text-sm text-text-secondary flex items-center gap-2 bg-surface-elevated rounded-2xl px-4 py-3 border border-border-light">
+                      <Loader2 className="h-4 w-4 animate-spin text-coral" />
+                      Saving your presentation…
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
