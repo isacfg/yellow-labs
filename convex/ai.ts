@@ -69,18 +69,21 @@ type RawMessage = {
 function buildHistory(msgs: RawMessage[]): Anthropic.MessageParam[] {
   return msgs.map((m) => {
     if (m.toolCallId && m.toolCallInput) {
-      // Assistant message that called AskUserQuestion
-      const content: Array<Anthropic.TextBlockParam | Anthropic.ToolUseBlockParam> = [];
-      if (m.content) {
-        content.push({ type: "text", text: m.content });
+      try {
+        const content: Anthropic.ContentBlockParam[] = [];
+        if (m.content) {
+          content.push({ type: "text", text: m.content });
+        }
+        content.push({
+          type: "tool_use",
+          id: m.toolCallId,
+          name: "AskUserQuestion",
+          input: JSON.parse(m.toolCallInput) as Record<string, unknown>,
+        });
+        return { role: "assistant" as const, content };
+      } catch {
+        // Malformed tool call input — fall through to treat as plain text
       }
-      content.push({
-        type: "tool_use",
-        id: m.toolCallId,
-        name: "AskUserQuestion",
-        input: JSON.parse(m.toolCallInput) as Record<string, unknown>,
-      });
-      return { role: "assistant" as const, content };
     }
     if (m.toolResultFor) {
       // Hidden user message containing the tool result

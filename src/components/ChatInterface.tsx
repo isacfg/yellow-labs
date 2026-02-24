@@ -75,14 +75,15 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
       .join("\n");
 
     setIsSending(true);
-    setPendingAnswers({});
-    setCurrentQuestionIdx(0);
     try {
       await answerQuestion({
         conversationId,
         toolCallId,
         answers: answersText,
       });
+      // Reset only after successful submission
+      setPendingAnswers({});
+      setCurrentQuestionIdx(0);
     } catch (err) {
       console.error("Failed to submit answers:", err);
     } finally {

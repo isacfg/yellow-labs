@@ -32,9 +32,11 @@ export function AskUserQuestionCard({
   const question = questions[currentQuestionIdx];
   if (!question) return null;
 
-  const selectedLabel = pendingAnswers[currentQuestionIdx];
+  const rawSelection = pendingAnswers[currentQuestionIdx] ?? "";
+  const selectedLabels = rawSelection ? rawSelection.split(",").map((s) => s.trim()) : [];
+  const isMultiSelect = question.multiSelect === true;
   const isLastQuestion = currentQuestionIdx === questions.length - 1;
-  const canAdvance = selectedLabel !== undefined && !disabled;
+  const canAdvance = selectedLabels.length > 0 && !disabled;
 
   return (
     <div className="bg-surface-elevated border border-border-light rounded-2xl rounded-tl-md overflow-hidden shadow-card">
@@ -70,11 +72,22 @@ export function AskUserQuestionCard({
       {/* Option cards */}
       <div className="px-4 pb-4 flex flex-col gap-2">
         {question.options.map((option) => {
-          const isSelected = selectedLabel === option.label;
+          const isSelected = selectedLabels.includes(option.label);
+          const handleOptionClick = () => {
+            if (disabled) return;
+            if (isMultiSelect) {
+              const newSelections = isSelected
+                ? selectedLabels.filter((l) => l !== option.label)
+                : [...selectedLabels, option.label];
+              onAnswer(currentQuestionIdx, newSelections.join(", "));
+            } else {
+              onAnswer(currentQuestionIdx, option.label);
+            }
+          };
           return (
             <button
               key={option.label}
-              onClick={() => !disabled && onAnswer(currentQuestionIdx, option.label)}
+              onClick={handleOptionClick}
               disabled={disabled}
               className={[
                 "text-left rounded-xl border px-3.5 py-2.5 transition-all",
@@ -85,7 +98,7 @@ export function AskUserQuestionCard({
               ].join(" ")}
             >
               <p className={`text-sm font-semibold ${isSelected ? "text-coral" : "text-text-primary"}`}>
-                {option.label}
+                {isMultiSelect ? (isSelected ? "✓ " : "◻ ") : ""}{option.label}
               </p>
               {option.description && (
                 <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
