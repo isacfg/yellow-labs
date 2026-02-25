@@ -17,6 +17,16 @@ export default defineSchema({
     isAnonymous: v.optional(v.boolean()),
     // Custom field for profile photo storage:
     profileImageId: v.optional(v.id("_storage")),
+    // AI provider settings
+    selectedProvider: v.optional(v.union(
+      v.literal("anthropic"),
+      v.literal("openai"),
+      v.literal("google"),
+    )),
+    selectedModel: v.optional(v.string()),
+    anthropicApiKey: v.optional(v.string()),
+    openaiApiKey: v.optional(v.string()),
+    googleApiKey: v.optional(v.string()),
   })
     .index("email", ["email"])
     .index("phone", ["phone"]),

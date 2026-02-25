@@ -13,7 +13,9 @@
     "test:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
+    "@ai-sdk/anthropic": "^3.0.47",
+    "@ai-sdk/google": "^3.0.31",
+    "@ai-sdk/openai": "^3.0.33",
     "@convex-dev/auth": "^0.0.90",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -22,6 +24,7 @@
     "@radix-ui/react-scroll-area": "^1.2.10",
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
+    "ai": "^6.0.100",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.32.0",
@@ -31,7 +34,8 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1",
-    "tailwind-merge": "^3.5.0"
+    "tailwind-merge": "^3.5.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

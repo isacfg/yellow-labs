@@ -98,6 +98,86 @@ export const updateProfile = mutation({
   },
 });
 
+// Update the user's AI provider settings
+export const updateAISettings = mutation({
+  args: {
+    selectedProvider: v.optional(v.union(
+      v.literal("anthropic"),
+      v.literal("openai"),
+      v.literal("google"),
+    )),
+    selectedModel: v.optional(v.string()),
+    anthropicApiKey: v.optional(v.string()),
+    openaiApiKey: v.optional(v.string()),
+    googleApiKey: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    await ctx.db.patch(userId, args);
+    return null;
+  },
+});
+
+// Get the user's AI provider settings (safe — returns booleans for keys, not the keys themselves)
+export const getAISettings = query({
+  args: {},
+  returns: v.object({
+    selectedProvider: v.optional(v.string()),
+    selectedModel: v.optional(v.string()),
+    hasAnthropicKey: v.boolean(),
+    hasOpenaiKey: v.boolean(),
+    hasGoogleKey: v.boolean(),
+  }),
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      return {
+        selectedProvider: undefined,
+        selectedModel: undefined,
+        hasAnthropicKey: false,
+        hasOpenaiKey: false,
+        hasGoogleKey: false,
+      };
+    }
+    const user = await ctx.db.get(userId);
+    return {
+      selectedProvider: user?.selectedProvider,
+      selectedModel: user?.selectedModel,
+      hasAnthropicKey: !!user?.anthropicApiKey,
+      hasOpenaiKey: !!user?.openaiApiKey,
+      hasGoogleKey: !!user?.googleApiKey,
+    };
+  },
+});
+
+// Internal query: returns the full AI config including raw API keys (for use by actions only)
+export const getAIConfig = internalQuery({
+  args: { userId: v.id("users") },
+  returns: v.object({
+    selectedProvider: v.optional(v.union(
+      v.literal("anthropic"),
+      v.literal("openai"),
+      v.literal("google"),
+    )),
+    selectedModel: v.optional(v.string()),
+    anthropicApiKey: v.optional(v.string()),
+    openaiApiKey: v.optional(v.string()),
+    googleApiKey: v.optional(v.string()),
+  }),
+  handler: async (ctx, { userId }) => {
+    const user = await ctx.db.get(userId);
+    return {
+      selectedProvider: user?.selectedProvider,
+      selectedModel: user?.selectedModel,
+      anthropicApiKey: user?.anthropicApiKey,
+      openaiApiKey: user?.openaiApiKey,
+      googleApiKey: user?.googleApiKey,
+    };
+  },
+});
+
 // Delete the user's profile image
 export const deleteProfileImage = mutation({
   args: {},

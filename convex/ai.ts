@@ -3,7 +3,12 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
-import Anthropic from "@anthropic-ai/sdk";
+import { streamText, tool, zodSchema } from "ai";
+import type { ModelMessage, ToolCallPart, ToolResultPart } from "ai";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { z } from "zod";
 import type { GenericActionCtx } from "convex/server";
 import type { DataModel } from "./_generated/dataModel";
 import type { Id } from "./_generated/dataModel";
@@ -11,49 +16,62 @@ import { SYSTEM_PROMPT } from "./skill/content";
 
 // ─── Tool definition ────────────────────────────────────────────────────────
 
-const ASK_USER_QUESTION_TOOL: Anthropic.Tool = {
-  name: "AskUserQuestion",
+const ASK_USER_QUESTION_TOOL = tool({
   description:
     "Ask the user one or more multiple-choice questions. Use this to collect preferences, goals, or decisions before generating content.",
-  input_schema: {
-    type: "object" as const,
-    properties: {
-      questions: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            header: {
-              type: "string",
-              description: "Short label for this question (max 12 chars), e.g. 'Purpose'",
-            },
-            question: {
-              type: "string",
-              description: "The full question text",
-            },
-            options: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  label: { type: "string" },
-                  description: { type: "string" },
-                },
-                required: ["label", "description"],
-              },
-            },
-            multiSelect: {
-              type: "boolean",
-              description: "Whether the user can select multiple options",
-            },
-          },
-          required: ["header", "question", "options"],
-        },
-      },
-    },
-    required: ["questions"],
-  },
-};
+  inputSchema: zodSchema(
+    z.object({
+      questions: z.array(
+        z.object({
+          header: z
+            .string()
+            .describe("Short label for this question (max 12 chars), e.g. 'Purpose'"),
+          question: z.string().describe("The full question text"),
+          options: z.array(
+            z.object({
+              label: z.string(),
+              description: z.string(),
+            }),
+          ),
+          multiSelect: z
+            .boolean()
+            .optional()
+            .describe("Whether the user can select multiple options"),
+        }),
+      ),
+    }),
+  ),
+});
+
+// ─── Provider factory ────────────────────────────────────────────────────────
+
+type Provider = "anthropic" | "openai" | "google";
+
+interface UserAIConfig {
+  provider: Provider;
+  model: string;
+  anthropicApiKey?: string;
+  openaiApiKey?: string;
+  googleApiKey?: string;
+}
+
+function createModel(config: UserAIConfig) {
+  const { provider, model } = config;
+
+  if (provider === "anthropic") {
+    const apiKey = config.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY;
+    return createAnthropic({ apiKey })(model);
+  }
+  if (provider === "openai") {
+    const apiKey = config.openaiApiKey ?? process.env.OPENAI_API_KEY;
+    return createOpenAI({ apiKey })(model);
+  }
+  if (provider === "google") {
+    const apiKey = config.googleApiKey ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    return createGoogleGenerativeAI({ apiKey })(model);
+  }
+  throw new Error(`Unknown provider: ${provider}`);
+}
 
 // ─── History builder ────────────────────────────────────────────────────────
 
@@ -74,41 +92,51 @@ function buildHistory(
   attachmentImages?: { data: string; mediaType: string }[],
   attachmentMessageId?: string,
   attachmentText?: string,
-): Anthropic.MessageParam[] {
-  return msgs.map((m) => {
+): ModelMessage[] {
+  return msgs.map((m): ModelMessage => {
+    // Assistant message with tool call
     if (m.toolCallId && m.toolCallInput) {
       try {
-        const content: Anthropic.ContentBlockParam[] = [];
-        if (m.content) {
-          content.push({ type: "text", text: m.content });
-        }
-        content.push({
-          type: "tool_use",
-          id: m.toolCallId,
-          name: "AskUserQuestion",
-          input: JSON.parse(m.toolCallInput) as Record<string, unknown>,
-        });
-        return { role: "assistant" as const, content };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parts: any[] = [];
+        if (m.content) parts.push({ type: "text", text: m.content } satisfies { type: "text"; text: string });
+        parts.push({
+          type: "tool-call",
+          toolCallId: m.toolCallId,
+          toolName: "askUserQuestion",
+          input: JSON.parse(m.toolCallInput),
+        } satisfies ToolCallPart);
+        return { role: "assistant", content: parts };
       } catch {
-        // Malformed tool call input — fall through to treat as plain text
+        // Malformed tool call input — fall through to plain text
       }
     }
+
+    // Tool result message
     if (m.toolResultFor) {
-      // Hidden user message containing the tool result
       return {
-        role: "user" as const,
+        role: "tool",
         content: [
           {
-            type: "tool_result" as const,
-            tool_use_id: m.toolResultFor,
-            content: m.content,
-          },
+            type: "tool-result",
+            toolCallId: m.toolResultFor,
+            toolName: "askUserQuestion",
+            output: { type: "text", value: m.content },
+          } satisfies ToolResultPart,
         ],
       };
     }
-    // Inject attachment content for the message that had the file upload
-    if (m._id === attachmentMessageId && (attachmentText || (attachmentImages && attachmentImages.length > 0))) {
-      const content: Anthropic.ContentBlockParam[] = [];
+
+    // User message with attachment
+    if (
+      m._id === attachmentMessageId &&
+      (attachmentText || (attachmentImages && attachmentImages.length > 0))
+    ) {
+      type UserPart =
+        | { type: "text"; text: string }
+        | { type: "image"; image: string; mediaType?: string };
+
+      const content: UserPart[] = [];
 
       if (attachmentText) {
         content.push({
@@ -122,28 +150,20 @@ function buildHistory(
           type: "text",
           text: `[Visual reference: ${attachmentImages.length} slide thumbnail(s) showing layout and design]`,
         });
-        content.push(
-          ...attachmentImages.map(
-            (img) =>
-              ({
-                type: "image",
-                source: {
-                  type: "base64",
-                  media_type: img.mediaType as
-                    | "image/png"
-                    | "image/jpeg"
-                    | "image/gif"
-                    | "image/webp",
-                  data: img.data,
-                },
-              }) as Anthropic.ImageBlockParam,
-          ),
-        );
+        for (const img of attachmentImages) {
+          content.push({
+            type: "image",
+            image: img.data,
+            mediaType: img.mediaType,
+          });
+        }
       }
 
       content.push({ type: "text", text: m.content });
-      return { role: "user" as const, content };
+      return { role: "user", content } as ModelMessage;
     }
+
+    // Plain message
     return { role: m.role, content: m.content };
   });
 }
@@ -174,22 +194,23 @@ function generateSlug(): string {
 
 async function runStreaming(
   ctx: GenericActionCtx<DataModel>,
-  client: Anthropic,
-  history: Anthropic.MessageParam[],
+  history: ModelMessage[],
   assistantMsgId: Id<"messages">,
   conversationId: Id<"conversations">,
   userId: Id<"users">,
   convTitle: string | undefined,
+  userAIConfig: UserAIConfig,
 ): Promise<void> {
+  const model = createModel(userAIConfig);
+
   let fullContent = "";
   let textBuffer = "";
-  let toolUseId = "";
-  let toolUseName = "";
-  let toolInputJson = "";
-  let isCollectingTool = false;
+  let toolCallDetected: {
+    id: string;
+    name: string;
+    input: unknown;
+  } | null = null;
 
-  // Flush accumulated text to DB. Batching reduces mutation calls ~100x,
-  // avoiding Convex's per-action mutation limit during long responses.
   const flushText = async () => {
     if (!textBuffer) return;
     await ctx.runMutation(internal.messages.appendStream, {
@@ -199,64 +220,41 @@ async function runStreaming(
     textBuffer = "";
   };
 
-  const stream = await client.messages.stream({
-    model: "claude-sonnet-4-6",
-    max_tokens: 16000,
-    cache_control: { type: "ephemeral" },
-    system: [
-      {
-        type: "text" as const,
-        text: SYSTEM_PROMPT,
-        cache_control: { type: "ephemeral" as const },
-      },
-    ],
+  const result = streamText({
+    model,
+    system: SYSTEM_PROMPT,
     messages: history,
-    tools: [
-      {
-        ...ASK_USER_QUESTION_TOOL,
-        cache_control: { type: "ephemeral" as const },
-      },
-    ],
+    tools: { askUserQuestion: ASK_USER_QUESTION_TOOL },
+    maxOutputTokens: 16000,
   });
 
-  for await (const chunk of stream) {
-    if (chunk.type === "content_block_start") {
-      if (chunk.content_block.type === "tool_use") {
+  for await (const chunk of result.fullStream) {
+    if (chunk.type === "text-delta") {
+      const text = chunk.text;
+      fullContent += text;
+      textBuffer += text;
+      if (textBuffer.length >= 1000) {
         await flushText();
-        isCollectingTool = true;
-        toolUseId = chunk.content_block.id;
-        toolUseName = chunk.content_block.name;
-        toolInputJson = "";
       }
-    } else if (chunk.type === "content_block_delta") {
-      if (chunk.delta.type === "text_delta") {
-        const text = chunk.delta.text;
-        fullContent += text;
-        textBuffer += text;
-        if (textBuffer.length >= 1000) {
-          await flushText();
-        }
-      } else if (chunk.delta.type === "input_json_delta") {
-        toolInputJson += chunk.delta.partial_json;
-      }
-    } else if (chunk.type === "content_block_stop") {
-      if (isCollectingTool) {
-        isCollectingTool = false;
-      }
+    } else if (chunk.type === "tool-call") {
+      toolCallDetected = {
+        id: chunk.toolCallId,
+        name: chunk.toolName,
+        input: chunk.input,
+      };
     }
   }
 
   // Flush any remaining buffered text
   await flushText();
 
-  if (toolUseId) {
-    // Claude called AskUserQuestion — save tool call and pause
+  if (toolCallDetected) {
+    // Model called askUserQuestion — save tool call and pause
     await ctx.runMutation(internal.messages.saveToolCall, {
       messageId: assistantMsgId,
-      toolCallId: toolUseId,
-      toolCallInput: toolInputJson,
+      toolCallId: toolCallDetected.id,
+      toolCallInput: JSON.stringify(toolCallDetected.input),
     });
-    void toolUseName; // suppress unused-variable warning
   } else {
     // Normal text response — finalize
     const hasStylePreviews = detectStylePreviews(fullContent);
@@ -340,19 +338,28 @@ export const sendMessage = action({
     // 5. Create empty assistant message
     const assistantMsgId = await ctx.runMutation(
       internal.messages.createAssistant,
-      { conversationId: args.conversationId }
+      { conversationId: args.conversationId },
     );
 
-    // 6. Stream Claude response
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    // 6. Resolve user AI config
+    const aiConfig = await ctx.runQuery(internal.users.getAIConfig, { userId });
+    const userAIConfig: UserAIConfig = {
+      provider: aiConfig.selectedProvider ?? "anthropic",
+      model: aiConfig.selectedModel ?? "claude-sonnet-4-6",
+      anthropicApiKey: aiConfig.anthropicApiKey,
+      openaiApiKey: aiConfig.openaiApiKey,
+      googleApiKey: aiConfig.googleApiKey,
+    };
+
+    // 7. Stream AI response
     await runStreaming(
       ctx,
-      client,
       history,
       assistantMsgId,
       args.conversationId,
       userId,
       conv?.title,
+      userAIConfig,
     );
 
     return null;
@@ -387,22 +394,31 @@ export const answerQuestion = action({
     // 4. Create empty assistant message
     const assistantMsgId = await ctx.runMutation(
       internal.messages.createAssistant,
-      { conversationId: args.conversationId }
+      { conversationId: args.conversationId },
     );
 
-    // 5. Continue streaming
+    // 5. Resolve user AI config
+    const aiConfig = await ctx.runQuery(internal.users.getAIConfig, { userId });
+    const userAIConfig: UserAIConfig = {
+      provider: aiConfig.selectedProvider ?? "anthropic",
+      model: aiConfig.selectedModel ?? "claude-sonnet-4-6",
+      anthropicApiKey: aiConfig.anthropicApiKey,
+      openaiApiKey: aiConfig.openaiApiKey,
+      googleApiKey: aiConfig.googleApiKey,
+    };
+
+    // 6. Continue streaming
     const conv = await ctx.runQuery(api.conversations.get, {
       conversationId: args.conversationId,
     });
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     await runStreaming(
       ctx,
-      client,
       history,
       assistantMsgId,
       args.conversationId,
       userId,
       conv?.title,
+      userAIConfig,
     );
 
     return null;

@@ -6,14 +6,54 @@ import { Button } from "@/components/ui/button";
 import { useAuthActions } from "@convex-dev/auth/react";
 import {
     ArrowLeft,
+    Bot,
     Camera,
     Check,
+    Eye,
+    EyeOff,
+    Key,
     LogOut,
     Pencil,
     Trash2,
     User,
     Loader2,
 } from "lucide-react";
+
+// ─── AI Provider config ───────────────────────────────────────────────────────
+
+type Provider = "anthropic" | "openai" | "google";
+
+const MODELS: Record<Provider, { id: string; label: string }[]> = {
+    anthropic: [
+        { id: "claude-haiku-4-5", label: "Claude Haiku 4.5 (Fast)" },
+        { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 (Smart)" },
+        { id: "claude-opus-4-6", label: "Claude Opus 4.6 (Premium)" },
+    ],
+    openai: [
+        { id: "gpt-4o-mini", label: "GPT-4o Mini (Fast)" },
+        { id: "gpt-4o", label: "GPT-4o (Smart)" },
+        { id: "o3-mini", label: "o3-mini (Reasoning)" },
+    ],
+    google: [
+        { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash (Fast)" },
+        { id: "gemini-2.0-flash-thinking-exp", label: "Gemini 2.0 Flash Thinking (Reasoning)" },
+        { id: "gemini-2.0-pro-exp", label: "Gemini 2.0 Pro (Premium)" },
+    ],
+};
+
+const PROVIDER_LABELS: Record<Provider, string> = {
+    anthropic: "Anthropic",
+    openai: "OpenAI",
+    google: "Google",
+};
+
+const KEY_PLACEHOLDERS: Record<Provider, string> = {
+    anthropic: "sk-ant-...",
+    openai: "sk-...",
+    google: "AIza...",
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function LogoMark() {
     return (
@@ -30,9 +70,11 @@ function LogoMark() {
 
 export function Settings() {
     const user = useQuery(api.users.viewer);
+    const aiSettings = useQuery(api.users.getAISettings);
     const generateUploadUrl = useMutation(api.users.generateUploadUrl);
     const updateProfile = useMutation(api.users.updateProfile);
     const deleteProfileImage = useMutation(api.users.deleteProfileImage);
+    const updateAISettings = useMutation(api.users.updateAISettings);
     const { signOut } = useAuthActions();
     const { isLoading, isAuthenticated } = useConvexAuth();
     const navigate = useNavigate();
@@ -47,6 +89,67 @@ export function Settings() {
         type: "success" | "error";
     } | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // AI settings state
+    const [selectedProvider, setSelectedProvider] = useState<Provider>("anthropic");
+    const [selectedModel, setSelectedModel] = useState("claude-sonnet-4-6");
+    const [apiKeys, setApiKeys] = useState<Record<Provider, string>>({
+        anthropic: "",
+        openai: "",
+        google: "",
+    });
+    const [showKey, setShowKey] = useState<Record<Provider, boolean>>({
+        anthropic: false,
+        openai: false,
+        google: false,
+    });
+    const [savingProvider, setSavingProvider] = useState(false);
+    const [savingKey, setSavingKey] = useState<Provider | null>(null);
+    const [aiSettingsLoaded, setAISettingsLoaded] = useState(false);
+
+    // Sync AI settings from DB once loaded
+    const syncAISettings = useCallback(() => {
+        if (aiSettings && !aiSettingsLoaded) {
+            setSelectedProvider((aiSettings.selectedProvider as Provider) ?? "anthropic");
+            setSelectedModel(aiSettings.selectedModel ?? "claude-sonnet-4-6");
+            setAISettingsLoaded(true);
+        }
+    }, [aiSettings, aiSettingsLoaded]);
+    syncAISettings();
+
+    const handleProviderChange = (provider: Provider) => {
+        setSelectedProvider(provider);
+        // Reset model to first option for the new provider
+        setSelectedModel(MODELS[provider][0].id);
+    };
+
+    const handleSaveProviderAndModel = async () => {
+        setSavingProvider(true);
+        try {
+            await updateAISettings({ selectedProvider, selectedModel });
+            showToast("AI provider saved");
+        } catch {
+            showToast("Failed to save provider", "error");
+        } finally {
+            setSavingProvider(false);
+        }
+    };
+
+    const handleSaveApiKey = async (provider: Provider) => {
+        const key = apiKeys[provider].trim();
+        setSavingKey(provider);
+        try {
+            await updateAISettings({
+                [`${provider}ApiKey`]: key || undefined,
+            } as Parameters<typeof updateAISettings>[0]);
+            setApiKeys((prev) => ({ ...prev, [provider]: "" }));
+            showToast(key ? "API key saved" : "API key removed");
+        } catch {
+            showToast("Failed to save API key", "error");
+        } finally {
+            setSavingKey(null);
+        }
+    };
 
     const showToast = useCallback(
         (message: string, type: "success" | "error" = "success") => {
@@ -455,6 +558,138 @@ export function Settings() {
                                         year: "numeric",
                                     })}
                                 </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* AI Provider Section */}
+                <div className="mt-8 bg-surface-elevated rounded-2xl border border-border-light shadow-card overflow-hidden animate-fade-in" id="settings-ai-provider">
+                    <div className="px-6 sm:px-8 py-6">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Bot className="h-4 w-4 text-coral" />
+                            <h3 className="text-sm font-semibold text-text-primary">AI Provider</h3>
+                        </div>
+                        <p className="text-xs text-text-secondary mb-6">
+                            Choose which AI model powers your slide generation. Add your own API key to use your own quota.
+                        </p>
+
+                        <div className="space-y-6">
+                            {/* Provider + Model selectors */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-1.5 block">
+                                        Provider
+                                    </label>
+                                    <select
+                                        value={selectedProvider}
+                                        onChange={(e) => handleProviderChange(e.target.value as Provider)}
+                                        className="w-full h-10 px-3 rounded-xl border border-border bg-surface text-sm font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-coral/30 focus:border-coral transition-all"
+                                        id="settings-provider-select"
+                                    >
+                                        {(Object.keys(PROVIDER_LABELS) as Provider[]).map((p) => (
+                                            <option key={p} value={p}>{PROVIDER_LABELS[p]}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-1.5 block">
+                                        Model
+                                    </label>
+                                    <select
+                                        value={selectedModel}
+                                        onChange={(e) => setSelectedModel(e.target.value)}
+                                        className="w-full h-10 px-3 rounded-xl border border-border bg-surface text-sm font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-coral/30 focus:border-coral transition-all"
+                                        id="settings-model-select"
+                                    >
+                                        {MODELS[selectedProvider].map((m) => (
+                                            <option key={m.id} value={m.id}>{m.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            <Button
+                                size="sm"
+                                onClick={handleSaveProviderAndModel}
+                                disabled={savingProvider}
+                                className="rounded-xl gap-1.5"
+                                id="settings-save-provider-btn"
+                            >
+                                {savingProvider ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                    <Check className="h-3.5 w-3.5" />
+                                )}
+                                Save provider &amp; model
+                            </Button>
+
+                            {/* BYOK API Keys */}
+                            <div className="border-t border-border-light pt-5">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                    <Key className="h-3.5 w-3.5 text-text-tertiary" />
+                                    <span className="text-xs font-medium text-text-tertiary uppercase tracking-wider">
+                                        Bring Your Own API Key (optional)
+                                    </span>
+                                </div>
+                                <p className="text-xs text-text-secondary mb-4">
+                                    Your key overrides the app default. Keys are stored securely and never logged.
+                                </p>
+                                <div className="space-y-4">
+                                    {(Object.keys(PROVIDER_LABELS) as Provider[]).map((provider) => {
+                                        const hasKey = aiSettings?.[`has${provider.charAt(0).toUpperCase() + provider.slice(1)}Key` as keyof typeof aiSettings] as boolean;
+                                        return (
+                                            <div key={provider}>
+                                                <label className="text-xs font-medium text-text-secondary mb-1.5 flex items-center gap-2">
+                                                    {PROVIDER_LABELS[provider]}
+                                                    {hasKey && (
+                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-green-50 text-green-700 text-xs font-medium border border-green-200">
+                                                            Custom key set
+                                                        </span>
+                                                    )}
+                                                </label>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="relative flex-1">
+                                                        <input
+                                                            type={showKey[provider] ? "text" : "password"}
+                                                            value={apiKeys[provider]}
+                                                            onChange={(e) => setApiKeys((prev) => ({ ...prev, [provider]: e.target.value }))}
+                                                            placeholder={hasKey ? "Enter new key to replace" : KEY_PLACEHOLDERS[provider]}
+                                                            className="w-full h-10 px-3 pr-10 rounded-xl border border-border bg-surface text-sm font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-coral/30 focus:border-coral transition-all placeholder:text-text-tertiary font-mono"
+                                                            id={`settings-${provider}-key-input`}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowKey((prev) => ({ ...prev, [provider]: !prev[provider] }))}
+                                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-secondary transition-colors"
+                                                            aria-label={showKey[provider] ? "Hide key" : "Show key"}
+                                                        >
+                                                            {showKey[provider] ? (
+                                                                <EyeOff className="h-4 w-4" />
+                                                            ) : (
+                                                                <Eye className="h-4 w-4" />
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => handleSaveApiKey(provider)}
+                                                        disabled={savingKey === provider || !apiKeys[provider].trim()}
+                                                        className="rounded-xl shrink-0 gap-1.5"
+                                                        id={`settings-${provider}-key-save-btn`}
+                                                    >
+                                                        {savingKey === provider ? (
+                                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                        ) : (
+                                                            <Check className="h-3.5 w-3.5" />
+                                                        )}
+                                                        Save
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
                     </div>
