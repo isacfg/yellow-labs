@@ -55,6 +55,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
     attachment?: {
       name: string;
       pageImages: { data: string; mediaType: string }[];
+      textContent?: string;
     },
   ) => {
     if (isSending || isStreaming) return;

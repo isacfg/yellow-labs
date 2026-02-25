@@ -90,13 +90,38 @@ type RawMessage = {
 
 function buildHistory(
   msgs: RawMessage[],
+  provider: Provider,
   attachmentImages?: { data: string; mediaType: string }[],
   attachmentMessageId?: string,
   attachmentText?: string,
 ): ModelMessage[] {
+  const preserveToolParts = provider !== "google";
+
   return msgs.map((m): ModelMessage => {
     // Assistant message with tool call
     if (m.toolCallId && m.toolCallInput) {
+      if (!preserveToolParts) {
+        let toolContext = "";
+        try {
+          const parsed = JSON.parse(m.toolCallInput) as { questions?: Array<{ header?: string; question?: string }> };
+          const questions = parsed.questions ?? [];
+          if (questions.length > 0) {
+            toolContext = questions
+              .map((q, i) => `Q${i + 1}: ${q.header ? `${q.header} — ` : ""}${q.question ?? ""}`)
+              .join("\n");
+          }
+        } catch {
+          // Keep fallback text below
+        }
+        const text = [
+          m.content,
+          toolContext ? `\n[Previous questionnaire shown to user]\n${toolContext}` : "\n[Previous questionnaire shown to user]",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        return { role: "assistant", content: text };
+      }
+
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const parts: any[] = [];
@@ -115,6 +140,13 @@ function buildHistory(
 
     // Tool result message
     if (m.toolResultFor) {
+      if (!preserveToolParts) {
+        return {
+          role: "user",
+          content: `[Questionnaire answers]\n${m.content}`,
+        };
+      }
+
       return {
         role: "tool",
         content: [
@@ -189,6 +221,27 @@ function extractTitle(htmlContent: string, fallback: string): string {
 
 function generateSlug(): string {
   return crypto.randomUUID();
+}
+
+function formatAIError(error: unknown, provider: Provider): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const lower = message.toLowerCase();
+
+  if (lower.includes("thought_signature")) {
+    return "Google Gemini could not continue this tool-based conversation (missing thought signature from prior tool call). Please retry; if it persists, switch provider/model in Settings.";
+  }
+
+  if (lower.includes("quota") || lower.includes("resource_exhausted") || lower.includes("429")) {
+    if (provider === "google") {
+      return "Google Gemini quota exceeded (429). Check billing/limits in your Gemini project or switch provider/model in Settings.";
+    }
+    if (provider === "openai") {
+      return "OpenAI quota/rate limit exceeded (429). Check billing/limits in your OpenAI project or switch provider/model in Settings.";
+    }
+    return "Anthropic quota/rate limit exceeded (429). Check billing/limits in your Anthropic account or switch provider/model in Settings.";
+  }
+
+  return `AI request failed: ${message}`;
 }
 
 // ─── Shared streaming logic ───────────────────────────────────────────────────
@@ -371,24 +424,13 @@ export const sendMessage = action({
       });
     }
 
-    // 4. Load conversation history
-    const rawHistory = await ctx.runQuery(internal.messages.listForAI, {
-      conversationId: args.conversationId,
-    });
-    const history = buildHistory(
-      rawHistory,
-      args.attachmentImages,
-      savedMsgId,
-      args.attachmentText,
-    );
-
-    // 5. Create empty assistant message
+    // 4. Create empty assistant message
     const assistantMsgId = await ctx.runMutation(
       internal.messages.createAssistant,
       { conversationId: args.conversationId },
     );
 
-    // 6. Resolve user AI config
+    // 5. Resolve user AI config
     const aiConfig = await ctx.runQuery(internal.users.getAIConfig, { userId });
     const userAIConfig: UserAIConfig = {
       provider: aiConfig.selectedProvider ?? "anthropic",
@@ -397,6 +439,18 @@ export const sendMessage = action({
       openaiApiKey: aiConfig.openaiApiKey,
       googleApiKey: aiConfig.googleApiKey,
     };
+
+    // 6. Load conversation history
+    const rawHistory = await ctx.runQuery(internal.messages.listForAI, {
+      conversationId: args.conversationId,
+    });
+    const history = buildHistory(
+      rawHistory,
+      userAIConfig.provider,
+      args.attachmentImages,
+      savedMsgId,
+      args.attachmentText,
+    );
 
     // 7. Load theme if conversation has one
     const conv2 = await ctx.runQuery(api.conversations.get, {
@@ -410,16 +464,28 @@ export const sendMessage = action({
     }
 
     // 8. Stream AI response
-    await runStreaming(
-      ctx,
-      history,
-      assistantMsgId,
-      args.conversationId,
-      userId,
-      conv?.title,
-      userAIConfig,
-      theme,
-    );
+    try {
+      await runStreaming(
+        ctx,
+        history,
+        assistantMsgId,
+        args.conversationId,
+        userId,
+        conv?.title,
+        userAIConfig,
+        theme,
+      );
+    } catch (error) {
+      await ctx.runMutation(internal.messages.appendStream, {
+        messageId: assistantMsgId,
+        chunk: formatAIError(error, userAIConfig.provider),
+      });
+      await ctx.runMutation(internal.messages.finalize, {
+        messageId: assistantMsgId,
+        hasStylePreviews: false,
+        hasFinalPresentation: false,
+      });
+    }
 
     return null;
   },
@@ -444,19 +510,13 @@ export const answerQuestion = action({
       content: args.answers,
     });
 
-    // 3. Load full conversation history (now includes the tool result)
-    const rawHistory = await ctx.runQuery(internal.messages.listForAI, {
-      conversationId: args.conversationId,
-    });
-    const history = buildHistory(rawHistory);
-
-    // 4. Create empty assistant message
+    // 3. Create empty assistant message
     const assistantMsgId = await ctx.runMutation(
       internal.messages.createAssistant,
       { conversationId: args.conversationId },
     );
 
-    // 5. Resolve user AI config
+    // 4. Resolve user AI config
     const aiConfig = await ctx.runQuery(internal.users.getAIConfig, { userId });
     const userAIConfig: UserAIConfig = {
       provider: aiConfig.selectedProvider ?? "anthropic",
@@ -465,6 +525,12 @@ export const answerQuestion = action({
       openaiApiKey: aiConfig.openaiApiKey,
       googleApiKey: aiConfig.googleApiKey,
     };
+
+    // 5. Load full conversation history (now includes the tool result)
+    const rawHistory = await ctx.runQuery(internal.messages.listForAI, {
+      conversationId: args.conversationId,
+    });
+    const history = buildHistory(rawHistory, userAIConfig.provider);
 
     // 6. Load theme if conversation has one
     const conv = await ctx.runQuery(api.conversations.get, {
@@ -478,16 +544,28 @@ export const answerQuestion = action({
     }
 
     // 7. Continue streaming
-    await runStreaming(
-      ctx,
-      history,
-      assistantMsgId,
-      args.conversationId,
-      userId,
-      conv?.title,
-      userAIConfig,
-      theme,
-    );
+    try {
+      await runStreaming(
+        ctx,
+        history,
+        assistantMsgId,
+        args.conversationId,
+        userId,
+        conv?.title,
+        userAIConfig,
+        theme,
+      );
+    } catch (error) {
+      await ctx.runMutation(internal.messages.appendStream, {
+        messageId: assistantMsgId,
+        chunk: formatAIError(error, userAIConfig.provider),
+      });
+      await ctx.runMutation(internal.messages.finalize, {
+        messageId: assistantMsgId,
+        hasStylePreviews: false,
+        hasFinalPresentation: false,
+      });
+    }
 
     return null;
   },
@@ -809,10 +887,35 @@ function buildThemeChatHistory(
     toolCallInput?: string;
     toolResultFor?: string;
   }[],
+  provider: Provider,
 ): ModelMessage[] {
+  const preserveToolParts = provider !== "google";
+
   return msgs.map((m): ModelMessage => {
     // Assistant message with tool call
     if (m.toolCallId && m.toolCallInput) {
+      if (!preserveToolParts) {
+        let toolContext = "";
+        try {
+          const parsed = JSON.parse(m.toolCallInput) as { questions?: Array<{ header?: string; question?: string }> };
+          const questions = parsed.questions ?? [];
+          if (questions.length > 0) {
+            toolContext = questions
+              .map((q, i) => `Q${i + 1}: ${q.header ? `${q.header} — ` : ""}${q.question ?? ""}`)
+              .join("\n");
+          }
+        } catch {
+          // Keep fallback text below
+        }
+        const text = [
+          m.content,
+          toolContext ? `\n[Previous questionnaire shown to user]\n${toolContext}` : "\n[Previous questionnaire shown to user]",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        return { role: "assistant", content: text };
+      }
+
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const parts: any[] = [];
@@ -831,6 +934,13 @@ function buildThemeChatHistory(
 
     // Tool result message
     if (m.toolResultFor) {
+      if (!preserveToolParts) {
+        return {
+          role: "user",
+          content: `[Questionnaire answers]\n${m.content}`,
+        };
+      }
+
       return {
         role: "tool",
         content: [
@@ -855,7 +965,6 @@ async function runThemeChatStreaming(
   history: ModelMessage[],
   assistantMsgId: Id<"themeMessages">,
   conversationId: Id<"themeConversations">,
-  userId: Id<"users">,
   userAIConfig: UserAIConfig,
 ): Promise<void> {
   const model = createModel(userAIConfig);
@@ -959,19 +1068,13 @@ export const sendThemeMessage = action({
       content: args.userContent,
     });
 
-    // 3. Load conversation history
-    const rawHistory = await ctx.runQuery(internal.themeConversations.listForAI, {
-      conversationId: args.conversationId,
-    });
-    const history = buildThemeChatHistory(rawHistory);
-
-    // 4. Create empty assistant message
+    // 3. Create empty assistant message
     const assistantMsgId = await ctx.runMutation(
       internal.themeConversations.createAssistantMessage,
       { conversationId: args.conversationId },
     );
 
-    // 5. Resolve user AI config
+    // 4. Resolve user AI config
     const aiConfig = await ctx.runQuery(internal.users.getAIConfig, { userId });
     const userAIConfig: UserAIConfig = {
       provider: aiConfig.selectedProvider ?? "anthropic",
@@ -981,15 +1084,31 @@ export const sendThemeMessage = action({
       googleApiKey: aiConfig.googleApiKey,
     };
 
+    // 5. Load conversation history
+    const rawHistory = await ctx.runQuery(internal.themeConversations.listForAI, {
+      conversationId: args.conversationId,
+    });
+    const history = buildThemeChatHistory(rawHistory, userAIConfig.provider);
+
     // 6. Stream AI response
-    await runThemeChatStreaming(
-      ctx,
-      history,
-      assistantMsgId,
-      args.conversationId,
-      userId,
-      userAIConfig,
-    );
+    try {
+      await runThemeChatStreaming(
+        ctx,
+        history,
+        assistantMsgId,
+        args.conversationId,
+        userAIConfig,
+      );
+    } catch (error) {
+      await ctx.runMutation(internal.themeConversations.appendStream, {
+        messageId: assistantMsgId,
+        chunk: formatAIError(error, userAIConfig.provider),
+      });
+      await ctx.runMutation(internal.themeConversations.finalize, {
+        messageId: assistantMsgId,
+        hasThemeResult: false,
+      });
+    }
 
     return null;
   },
@@ -1014,19 +1133,13 @@ export const answerThemeQuestion = action({
       content: args.answers,
     });
 
-    // 3. Load full conversation history
-    const rawHistory = await ctx.runQuery(internal.themeConversations.listForAI, {
-      conversationId: args.conversationId,
-    });
-    const history = buildThemeChatHistory(rawHistory);
-
-    // 4. Create empty assistant message
+    // 3. Create empty assistant message
     const assistantMsgId = await ctx.runMutation(
       internal.themeConversations.createAssistantMessage,
       { conversationId: args.conversationId },
     );
 
-    // 5. Resolve user AI config
+    // 4. Resolve user AI config
     const aiConfig = await ctx.runQuery(internal.users.getAIConfig, { userId });
     const userAIConfig: UserAIConfig = {
       provider: aiConfig.selectedProvider ?? "anthropic",
@@ -1036,15 +1149,31 @@ export const answerThemeQuestion = action({
       googleApiKey: aiConfig.googleApiKey,
     };
 
+    // 5. Load full conversation history
+    const rawHistory = await ctx.runQuery(internal.themeConversations.listForAI, {
+      conversationId: args.conversationId,
+    });
+    const history = buildThemeChatHistory(rawHistory, userAIConfig.provider);
+
     // 6. Continue streaming
-    await runThemeChatStreaming(
-      ctx,
-      history,
-      assistantMsgId,
-      args.conversationId,
-      userId,
-      userAIConfig,
-    );
+    try {
+      await runThemeChatStreaming(
+        ctx,
+        history,
+        assistantMsgId,
+        args.conversationId,
+        userAIConfig,
+      );
+    } catch (error) {
+      await ctx.runMutation(internal.themeConversations.appendStream, {
+        messageId: assistantMsgId,
+        chunk: formatAIError(error, userAIConfig.provider),
+      });
+      await ctx.runMutation(internal.themeConversations.finalize, {
+        messageId: assistantMsgId,
+        hasThemeResult: false,
+      });
+    }
 
     return null;
   },

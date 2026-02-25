@@ -11,6 +11,7 @@ interface PresentationCardProps {
 
 export function PresentationCard({ slug, title, htmlContent, showFullscreen = true }: PresentationCardProps) {
   const [copied, setCopied] = useState(false);
+  void htmlContent;
 
   const shareUrl = `${window.location.origin}/p/${slug}`;
 
