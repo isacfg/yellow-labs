@@ -58,15 +58,23 @@ const ASK_USER_QUESTION_TOOL: Anthropic.Tool = {
 // ─── History builder ────────────────────────────────────────────────────────
 
 type RawMessage = {
+  _id: string;
   role: "user" | "assistant";
   content: string;
   isStreaming: boolean;
+  hasAttachment?: boolean;
+  attachmentName?: string;
   toolCallId?: string;
   toolCallInput?: string;
   toolResultFor?: string;
 };
 
-function buildHistory(msgs: RawMessage[]): Anthropic.MessageParam[] {
+function buildHistory(
+  msgs: RawMessage[],
+  attachmentImages?: { data: string; mediaType: string }[],
+  attachmentMessageId?: string,
+  attachmentText?: string,
+): Anthropic.MessageParam[] {
   return msgs.map((m) => {
     if (m.toolCallId && m.toolCallInput) {
       try {
@@ -97,6 +105,44 @@ function buildHistory(msgs: RawMessage[]): Anthropic.MessageParam[] {
           },
         ],
       };
+    }
+    // Inject attachment content for the message that had the file upload
+    if (m._id === attachmentMessageId && (attachmentText || (attachmentImages && attachmentImages.length > 0))) {
+      const content: Anthropic.ContentBlockParam[] = [];
+
+      if (attachmentText) {
+        content.push({
+          type: "text",
+          text: `[Uploaded file: ${m.attachmentName ?? "file"}\n\nExtracted slide content — use these exact names, titles, data points, and information as the basis for the new presentation:\n\n${attachmentText}]`,
+        });
+      }
+
+      if (attachmentImages && attachmentImages.length > 0) {
+        content.push({
+          type: "text",
+          text: `[Visual reference: ${attachmentImages.length} slide thumbnail(s) showing layout and design]`,
+        });
+        content.push(
+          ...attachmentImages.map(
+            (img) =>
+              ({
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: img.mediaType as
+                    | "image/png"
+                    | "image/jpeg"
+                    | "image/gif"
+                    | "image/webp",
+                  data: img.data,
+                },
+              }) as Anthropic.ImageBlockParam,
+          ),
+        );
+      }
+
+      content.push({ type: "text", text: m.content });
+      return { role: "user" as const, content };
     }
     return { role: m.role, content: m.content };
   });
@@ -156,9 +202,21 @@ async function runStreaming(
   const stream = await client.messages.stream({
     model: "claude-sonnet-4-6",
     max_tokens: 16000,
-    system: SYSTEM_PROMPT,
+    cache_control: { type: "ephemeral" },
+    system: [
+      {
+        type: "text" as const,
+        text: SYSTEM_PROMPT,
+        cache_control: { type: "ephemeral" as const },
+      },
+    ],
     messages: history,
-    tools: [ASK_USER_QUESTION_TOOL],
+    tools: [
+      {
+        ...ASK_USER_QUESTION_TOOL,
+        cache_control: { type: "ephemeral" as const },
+      },
+    ],
   });
 
   for await (const chunk of stream) {
@@ -231,6 +289,16 @@ export const sendMessage = action({
   args: {
     conversationId: v.id("conversations"),
     userContent: v.string(),
+    attachmentImages: v.optional(
+      v.array(
+        v.object({
+          data: v.string(),
+          mediaType: v.string(),
+        }),
+      ),
+    ),
+    attachmentName: v.optional(v.string()),
+    attachmentText: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -238,10 +306,12 @@ export const sendMessage = action({
     const userId = await ctx.runQuery(internal.users.currentUserId);
     if (!userId) throw new Error("Not authenticated");
 
-    // 2. Save user message
-    await ctx.runMutation(api.messages.addUser, {
+    // 2. Save user message (with attachment metadata if present)
+    const savedMsgId = await ctx.runMutation(api.messages.addUser, {
       conversationId: args.conversationId,
       content: args.userContent,
+      hasAttachment: args.attachmentImages ? true : undefined,
+      attachmentName: args.attachmentName,
     });
 
     // 3. Auto-set title from first message
@@ -260,7 +330,12 @@ export const sendMessage = action({
     const rawHistory = await ctx.runQuery(internal.messages.listForAI, {
       conversationId: args.conversationId,
     });
-    const history = buildHistory(rawHistory);
+    const history = buildHistory(
+      rawHistory,
+      args.attachmentImages,
+      savedMsgId,
+      args.attachmentText,
+    );
 
     // 5. Create empty assistant message
     const assistantMsgId = await ctx.runMutation(

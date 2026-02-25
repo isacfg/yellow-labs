@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ExternalLink, Download, Share2, Check, Sparkles } from "lucide-react";
+import { ExternalLink, Share2, Check, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 interface PresentationCardProps {
@@ -14,17 +14,7 @@ export function PresentationCard({ slug, title, htmlContent, showFullscreen = tr
 
   const shareUrl = `${window.location.origin}/p/${slug}`;
 
-  const handleDownload = () => {
-    const blob = new Blob([htmlContent], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${title.replace(/[^a-z0-9]/gi, "-").toLowerCase()}.html`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const handleCopyLink = async () => {
+const handleCopyLink = async () => {
     await navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -45,12 +35,12 @@ export function PresentationCard({ slug, title, htmlContent, showFullscreen = tr
       </div>
 
       {/* Actions */}
-      <div className="px-5 py-4 flex flex-wrap gap-2">
+      <div className="px-5 py-4 flex gap-2">
         {showFullscreen && (
           <Button
             asChild
             size="sm"
-            className="rounded-full px-5 text-xs h-9 gap-1.5"
+            className="rounded-full px-5 text-xs h-9 gap-1.5 flex-1"
           >
             <a href={`/p/${slug}`} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="h-3.5 w-3.5" />
@@ -61,17 +51,8 @@ export function PresentationCard({ slug, title, htmlContent, showFullscreen = tr
         <Button
           variant="outline"
           size="sm"
-          onClick={handleDownload}
-          className="rounded-full px-5 text-xs h-9 gap-1.5"
-        >
-          <Download className="h-3.5 w-3.5" />
-          Download .html
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
           onClick={handleCopyLink}
-          className="rounded-full px-5 text-xs h-9 gap-1.5"
+          className="rounded-full px-5 text-xs h-9 gap-1.5 flex-1"
         >
           {copied ? (
             <>
@@ -81,7 +62,7 @@ export function PresentationCard({ slug, title, htmlContent, showFullscreen = tr
           ) : (
             <>
               <Share2 className="h-3.5 w-3.5" />
-              Copy link
+              Share
             </>
           )}
         </Button>

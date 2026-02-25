@@ -29,7 +29,7 @@ export default defineConfig({
     // Tests that need a signed-in user
     {
       name: "authenticated",
-      testMatch: ["**/dashboard.test.ts", "**/present.test.ts"],
+      testMatch: ["**/dashboard.test.ts", "**/present.test.ts", "**/settings.test.ts"],
       dependencies: ["setup"],
       use: {
         ...devices["Desktop Chrome"],

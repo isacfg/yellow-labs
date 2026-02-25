@@ -20,6 +20,8 @@ export const list = query({
       hasStylePreviews: v.boolean(),
       hasFinalPresentation: v.boolean(),
       createdAt: v.number(),
+      hasAttachment: v.optional(v.boolean()),
+      attachmentName: v.optional(v.string()),
       toolCallId: v.optional(v.string()),
       toolCallInput: v.optional(v.string()),
       toolResultFor: v.optional(v.string()),
@@ -44,6 +46,8 @@ export const addUser = mutation({
   args: {
     conversationId: v.id("conversations"),
     content: v.string(),
+    hasAttachment: v.optional(v.boolean()),
+    attachmentName: v.optional(v.string()),
   },
   returns: v.id("messages"),
   handler: async (ctx, args) => {
@@ -59,6 +63,8 @@ export const addUser = mutation({
       hasStylePreviews: false,
       hasFinalPresentation: false,
       createdAt: Date.now(),
+      hasAttachment: args.hasAttachment,
+      attachmentName: args.attachmentName,
     });
   },
 });
@@ -120,6 +126,8 @@ export const listForAI = internalQuery({
       role: v.union(v.literal("user"), v.literal("assistant")),
       content: v.string(),
       isStreaming: v.boolean(),
+      hasAttachment: v.optional(v.boolean()),
+      attachmentName: v.optional(v.string()),
       toolCallId: v.optional(v.string()),
       toolCallInput: v.optional(v.string()),
       toolResultFor: v.optional(v.string()),
@@ -140,6 +148,8 @@ export const listForAI = internalQuery({
         role: m.role,
         content: m.content,
         isStreaming: m.isStreaming,
+        hasAttachment: m.hasAttachment,
+        attachmentName: m.attachmentName,
         toolCallId: m.toolCallId,
         toolCallInput: m.toolCallInput,
         toolResultFor: m.toolResultFor,

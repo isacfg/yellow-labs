@@ -31,23 +31,42 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
   const isStreaming = messages.some((m: (typeof messages)[number]) => m.isStreaming);
 
-  const lastUnansweredToolCallId = useMemo(() => {
-    const answeredIds = new Set(
-      messages
-        .filter((m: (typeof messages)[number]) => m.toolResultFor)
-        .map((m: (typeof messages)[number]) => m.toolResultFor)
-    );
+  const { lastUnansweredToolCallId, answeredToolCallResults } = useMemo(() => {
+    // Build map: toolCallId → selected labels array (from stored tool result messages)
+    const results: Record<string, string[]> = {};
+    const answeredIds = new Set<string | undefined>();
+    for (const m of messages) {
+      if (m.toolResultFor && m.content) {
+        results[m.toolResultFor] = m.content.split("\n").filter(Boolean);
+        answeredIds.add(m.toolResultFor);
+      }
+    }
     const toolCallMsgs = messages.filter(
       (m: (typeof messages)[number]) => m.toolCallId && !answeredIds.has(m.toolCallId)
     );
-    return toolCallMsgs.at(-1)?._id ?? null;
+    return {
+      lastUnansweredToolCallId: toolCallMsgs.at(-1)?._id ?? null,
+      answeredToolCallResults: results,
+    };
   }, [messages]);
 
-  const handleSend = async (content: string) => {
+  const handleSend = async (
+    content: string,
+    attachment?: {
+      name: string;
+      pageImages: { data: string; mediaType: string }[];
+    },
+  ) => {
     if (isSending || isStreaming) return;
     setIsSending(true);
     try {
-      await sendMessage({ conversationId, userContent: content });
+      await sendMessage({
+        conversationId,
+        userContent: content,
+        attachmentImages: attachment?.pageImages,
+        attachmentName: attachment?.name,
+        attachmentText: attachment?.textContent,
+      });
     } catch (err) {
       console.error("Failed to send message:", err);
     } finally {
@@ -149,6 +168,11 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
                     : undefined
                 }
                 questionDisabled={isSending || isStreaming}
+                answeredSelections={
+                  msg.toolCallId && answeredToolCallResults[msg.toolCallId]
+                    ? answeredToolCallResults[msg.toolCallId]
+                    : undefined
+                }
               />
             );
           });

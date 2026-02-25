@@ -9,11 +9,12 @@ Create zero-dependency, animation-rich HTML presentations that run entirely in t
 
 ## Core Philosophy
 
-1. **Zero Dependencies** — Single HTML files with inline CSS/JS. No npm, no build tools.
+1. **Zero Dependencies (Mostly)** — Single HTML files with inline CSS/JS. No npm, no build tools. The ONLY exception is loading Chart.js via CDN (`<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>`) for data visualization.
 2. **Show, Don't Tell** — People don't know what they want until they see it. Generate visual previews, not abstract choices.
 3. **Distinctive Design** — Avoid generic "AI slop" aesthetics. Every presentation should feel custom-crafted.
 4. **Production Quality** — Code should be well-commented, accessible, and performant.
 5. **Viewport Fitting (CRITICAL)** — Every slide MUST fit exactly within the viewport. No scrolling within slides, ever. This is non-negotiable.
+6. **Beautiful Data** — When data visualization is needed, generate stunning, theme-aware Chart.js charts that flawlessly match the chosen preset's colors and fonts.
 
 ---
 
@@ -41,6 +42,7 @@ To guarantee viewport fitting, enforce these limits per slide:
 | Code slide | 1 heading + 8-10 lines of code maximum |
 | Quote slide | 1 quote (max 3 lines) + attribution |
 | Image slide | 1 heading + 1 image (max 60vh height) |
+| Chart slide | 1 heading + 1 canvas element (max 60vh height) for Chart.js |
 
 **If content exceeds these limits → Split into multiple slides**
 
@@ -675,6 +677,50 @@ Every presentation should include:
    - 3D tilt on hover
    - Magnetic buttons
    - Counter animations
+
+4. **Chart.js Integration (if needed for data)**
+   - Always load from CDN in `<head>`: `<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>`
+   - NEVER use default Chart.js colors (the generic red/blue/yellow).
+   - MUST extract the exact CSS variables from the chosen style preset to color the chart.
+
+### Chart.js Styling Requirements (CRITICAL)
+
+If generating charts, they MUST look premium and match the chosen theme perfectly:
+
+1. **Extract CSS Variables in JS:**
+```javascript
+const rootStyles = getComputedStyle(document.documentElement);
+const textColor = rootStyles.getPropertyValue('--text-primary').trim() || '#fff';
+const bgColor = rootStyles.getPropertyValue('--bg-primary').trim() || '#000';
+const accentColor = rootStyles.getPropertyValue('--accent').trim() || '#00ffcc';
+// Grab specific palette colors from the chosen theme (e.g., --tab-1, --pill-pink)
+const palette = [
+    rootStyles.getPropertyValue('--accent').trim(),
+    rootStyles.getPropertyValue('--text-secondary').trim(),
+    // add more if needed or derive with opacity
+];
+```
+
+2. **Set Global Defaults:**
+```javascript
+Chart.defaults.color = textColor;
+Chart.defaults.font.family = rootStyles.getPropertyValue('--font-body').trim() || 'sans-serif';
+Chart.defaults.plugins.tooltip.backgroundColor = bgColor;
+Chart.defaults.plugins.tooltip.titleColor = textColor;
+Chart.defaults.plugins.tooltip.bodyColor = textColor;
+Chart.defaults.plugins.tooltip.borderColor = accentColor;
+Chart.defaults.plugins.tooltip.borderWidth = 1;
+```
+
+3. **Clean Up Grid Lines:**
+- Hide `grid.display` on X axis usually.
+- For Y axis, use a highly transparent version of text color: `color: 'rgba(255, 255, 255, 0.1)'` or similar based on dark/light mode.
+
+4. **Aesthetic Enhancements:**
+- Remove default border widths on bars (`borderWidth: 0`).
+- Add border radius to bars (`borderRadius: 4`).
+- Fill line charts with gradients.
+- Never use legends unless there are multiple datasets.
 
 ### Code Quality Requirements
 

@@ -3,7 +3,7 @@ import { api } from "../../convex/_generated/api";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { Plus, ExternalLink, MessageSquare, LogOut, LayoutTemplate, Sparkles } from "lucide-react";
+import { Plus, ExternalLink, MessageSquare, LogOut, LayoutTemplate, Sparkles, Settings } from "lucide-react";
 
 function LogoMark() {
   return (
@@ -65,6 +65,17 @@ export function Dashboard() {
             <span className="text-sm text-text-tertiary hidden sm:block">
               {user.email}
             </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              asChild
+              className="gap-1.5 text-text-secondary"
+            >
+              <Link to="/settings">
+                <Settings className="h-4 w-4" />
+                <span className="hidden sm:inline">Settings</span>
+              </Link>
+            </Button>
             <Button
               variant="ghost"
               size="sm"

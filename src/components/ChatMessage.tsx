@@ -1,7 +1,7 @@
 import { parseAIResponse } from "@/lib/parseAIResponse";
 import { StylePreviewGrid } from "./StylePreviewGrid";
 import { PresentationCard } from "./PresentationCard";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, Paperclip } from "lucide-react";
 import { AskUserQuestionCard } from "./AskUserQuestionCard";
 import type { AskUserQuestion } from "./AskUserQuestionCard";
 
@@ -12,6 +12,8 @@ interface Message {
   isStreaming: boolean;
   hasStylePreviews: boolean;
   hasFinalPresentation: boolean;
+  hasAttachment?: boolean;
+  attachmentName?: string;
   toolCallId?: string;
   toolCallInput?: string;
   toolResultFor?: string;
@@ -36,6 +38,8 @@ interface ChatMessageProps {
   onNext?: () => void;
   onSubmit?: () => void;
   questionDisabled?: boolean;
+  // Answered state: per-question selected labels, indexed by question order
+  answeredSelections?: string[];
 }
 
 export function ChatMessage({
@@ -50,6 +54,7 @@ export function ChatMessage({
   onNext,
   onSubmit,
   questionDisabled = false,
+  answeredSelections,
 }: ChatMessageProps) {
   // Hidden tool result messages — only exist for conversation history
   if (message.toolResultFor) return null;
@@ -59,8 +64,16 @@ export function ChatMessage({
   if (isUser) {
     return (
       <div className="flex justify-end mb-5 animate-scale-in">
-        <div className="max-w-[78%] rounded-2xl rounded-tr-md bg-coral text-white px-4 py-3 text-sm leading-relaxed shadow-sm">
-          {message.content}
+        <div className="max-w-[78%] flex flex-col items-end gap-1.5">
+          <div className="rounded-2xl rounded-tr-md bg-coral text-white px-4 py-3 text-sm leading-relaxed shadow-sm">
+            {message.content}
+          </div>
+          {message.hasAttachment && message.attachmentName && (
+            <div className="flex items-center gap-1.5 text-[11px] text-text-tertiary">
+              <Paperclip className="h-3 w-3 shrink-0" />
+              <span className="truncate max-w-[200px]">{message.attachmentName}</span>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -91,7 +104,7 @@ export function ChatMessage({
 
         {/* Content */}
         <div className="ml-9">
-          {/* AskUserQuestion tool call — render as interactive question card */}
+          {/* AskUserQuestion tool call */}
           {message.toolCallId && message.toolCallInput && (() => {
             let questions: AskUserQuestion[] = [];
             try {
@@ -100,7 +113,10 @@ export function ChatMessage({
             } catch {
               // malformed JSON — fall through to text render below
             }
-            if (questions.length > 0) {
+            if (questions.length === 0) return null;
+
+            // Already answered — show read-only summary with selections frozen
+            if (answeredSelections) {
               return (
                 <>
                   {message.content && (
@@ -108,19 +124,53 @@ export function ChatMessage({
                       {message.content}
                     </div>
                   )}
-                  <AskUserQuestionCard
-                    questions={questions}
-                    currentQuestionIdx={currentQuestionIdx ?? 0}
-                    pendingAnswers={pendingAnswers ?? {}}
-                    onAnswer={onAnswer ?? (() => { })}
-                    onNext={onNext ?? (() => { })}
-                    onSubmit={onSubmit ?? (() => { })}
-                    disabled={questionDisabled}
-                  />
+                  <div className="bg-surface-elevated border border-border-light rounded-2xl rounded-tl-md overflow-hidden shadow-card">
+                    {questions.map((q, qIdx) => {
+                      const raw = answeredSelections[qIdx] ?? "";
+                      const selected = raw ? raw.split(",").map((s) => s.trim()) : [];
+                      return (
+                        <div key={qIdx} className={`px-4 py-3 ${qIdx < questions.length - 1 ? "border-b border-border-light" : ""}`}>
+                          <p className="text-xs text-text-tertiary mb-2">{q.header}: {q.question}</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {q.options.map((opt) => (
+                              <span
+                                key={opt.label}
+                                className={selected.includes(opt.label)
+                                  ? "text-xs px-2.5 py-1 rounded-lg bg-coral/10 text-coral font-semibold"
+                                  : "text-xs px-2.5 py-1 rounded-lg bg-surface text-text-tertiary"
+                                }
+                              >
+                                {selected.includes(opt.label) ? "✓ " : ""}{opt.label}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </>
               );
             }
-            return null;
+
+            // Unanswered — interactive card
+            return (
+              <>
+                {message.content && (
+                  <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap mb-3 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                    {message.content}
+                  </div>
+                )}
+                <AskUserQuestionCard
+                  questions={questions}
+                  currentQuestionIdx={currentQuestionIdx ?? 0}
+                  pendingAnswers={pendingAnswers ?? {}}
+                  onAnswer={onAnswer ?? (() => { })}
+                  onNext={onNext ?? (() => { })}
+                  onSubmit={onSubmit ?? (() => { })}
+                  disabled={questionDisabled}
+                />
+              </>
+            );
           })()}
 
           {/* Normal text/stylePreviews/finalPresentation — only if no tool call */}
@@ -145,6 +195,7 @@ export function ChatMessage({
                   {!message.isStreaming && onStyleSelect && (
                     <StylePreviewGrid
                       previews={parsed.previews}
+                      names={parsed.names}
                       onSelect={onStyleSelect}
                       disabled={styleSelectDisabled}
                     />

@@ -5,6 +5,22 @@ import { authTables } from "@convex-dev/auth/server";
 export default defineSchema({
   ...authTables,
 
+  // Extend the users table from authTables with our custom field
+  users: defineTable({
+    // Fields from authTables.users:
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+    // Custom field for profile photo storage:
+    profileImageId: v.optional(v.id("_storage")),
+  })
+    .index("email", ["email"])
+    .index("phone", ["phone"]),
+
   conversations: defineTable({
     userId: v.id("users"),
     title: v.optional(v.string()),
@@ -20,6 +36,9 @@ export default defineSchema({
     hasStylePreviews: v.boolean(),
     hasFinalPresentation: v.boolean(),
     createdAt: v.number(),
+    // Attachment metadata (optional — only set when user attaches a file)
+    hasAttachment: v.optional(v.boolean()),
+    attachmentName: v.optional(v.string()),
     // Tool use fields (optional — only set when Claude calls AskUserQuestion)
     toolCallId: v.optional(v.string()),      // Anthropic tool_use id
     toolCallInput: v.optional(v.string()),   // JSON of the questions array

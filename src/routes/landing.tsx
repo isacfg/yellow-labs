@@ -36,7 +36,7 @@ const featureCards = [
     icon: Share2,
     title: "Share Anywhere",
     description:
-      "Every presentation gets a public link. Download as a self-contained HTML file or present directly in browser.",
+      "Every presentation gets a public link. Share with anyone and present directly in the browser.",
     gradient: "gradient-blue-teal",
   },
 ];

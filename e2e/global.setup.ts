@@ -26,7 +26,7 @@ setup("create test user and save auth state", async ({ page }) => {
 
     // Switch to sign-up mode
     await page.click('button[type="button"]:has-text("Sign up")');
-    await expect(page.locator('h3')).toContainText("Create account");
+    await expect(page.locator('button[type="submit"]')).toContainText("Create account");
 
     await page.fill('input[type="email"]', TEST_EMAIL);
     await page.fill('input[type="password"]', TEST_PASSWORD);

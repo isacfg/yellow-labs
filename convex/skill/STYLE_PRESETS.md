@@ -4,6 +4,14 @@ Curated visual styles for Frontend Slides. Each preset is inspired by real desig
 
 ---
 
+## 📊 Chart Integration Rules
+When a user asks for data visualization (charts, graphs), use the **exact** colors defined in their chosen preset below for the Chart.js configs. 
+- **Dark themes:** Add glow effects (shadows) to lines. Use highly transparent white for grid lines.
+- **Light themes:** Use clean, minimal formatting. Use highly transparent black for grid lines.
+- **Extract via JS:** ALWAYS use `getComputedStyle(document.documentElement).getPropertyValue('--color-name')` to color the charts so they adapt seamlessly.
+
+---
+
 ## ⚠️ CRITICAL: Viewport Fitting (Non-Negotiable)
 
 **Every slide MUST fit exactly in the viewport. No scrolling within slides, ever.**
