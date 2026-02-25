@@ -4,6 +4,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { ChatInterface } from "@/components/ChatInterface";
+import { ThemePicker } from "@/components/ThemePicker";
 import { ArrowLeft, ExternalLink, Layers } from "lucide-react";
 
 export function ChatSession() {
@@ -72,6 +73,13 @@ export function ChatSession() {
             {conversation?.title ?? "New presentation"}
           </h1>
         </div>
+
+        {conversationId && (
+          <ThemePicker
+            conversationId={conversationId as Id<"conversations">}
+            currentThemeId={conversation?.themeId}
+          />
+        )}
 
         <span className="text-xs text-text-tertiary hidden md:block shrink-0">
           {user?.email}

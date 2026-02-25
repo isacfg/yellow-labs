@@ -15,6 +15,8 @@ import type * as http from "../http.js";
 import type * as messages from "../messages.js";
 import type * as presentations from "../presentations.js";
 import type * as skill_content from "../skill/content.js";
+import type * as themeConversations from "../themeConversations.js";
+import type * as themes from "../themes.js";
 import type * as users from "../users.js";
 
 import type {
@@ -31,6 +33,8 @@ declare const fullApi: ApiFromModules<{
   messages: typeof messages;
   presentations: typeof presentations;
   "skill/content": typeof skill_content;
+  themeConversations: typeof themeConversations;
+  themes: typeof themes;
   users: typeof users;
 }>;
 

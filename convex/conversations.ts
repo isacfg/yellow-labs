@@ -26,6 +26,7 @@ export const list = query({
       title: v.optional(v.string()),
       status: v.union(v.literal("active"), v.literal("completed")),
       createdAt: v.number(),
+      themeId: v.optional(v.id("themes")),
     })
   ),
   handler: async (ctx) => {
@@ -49,6 +50,7 @@ export const get = query({
       title: v.optional(v.string()),
       status: v.union(v.literal("active"), v.literal("completed")),
       createdAt: v.number(),
+      themeId: v.optional(v.id("themes")),
     }),
     v.null()
   ),
@@ -73,6 +75,22 @@ export const setTitle = mutation({
     const conv = await ctx.db.get(args.conversationId);
     if (!conv || conv.userId !== userId) throw new Error("Not found");
     await ctx.db.patch(args.conversationId, { title: args.title });
+    return null;
+  },
+});
+
+export const setTheme = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    themeId: v.optional(v.id("themes")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const conv = await ctx.db.get(args.conversationId);
+    if (!conv || conv.userId !== userId) throw new Error("Not found");
+    await ctx.db.patch(args.conversationId, { themeId: args.themeId });
     return null;
   },
 });

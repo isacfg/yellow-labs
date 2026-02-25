@@ -3,7 +3,7 @@ import { api } from "../../convex/_generated/api";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { Plus, ExternalLink, MessageSquare, LogOut, LayoutTemplate, Sparkles, Settings } from "lucide-react";
+import { Plus, ExternalLink, MessageSquare, LogOut, LayoutTemplate, Sparkles, Settings, Palette } from "lucide-react";
 
 function LogoMark() {
   return (
@@ -30,6 +30,7 @@ export function Dashboard() {
   const user = useQuery(api.users.viewer);
   const presentations = useQuery(api.presentations.list) ?? [];
   const conversations = useQuery(api.conversations.list) ?? [];
+  const themes = useQuery(api.themes.list) ?? [];
   const { signOut } = useAuthActions();
   const { isLoading, isAuthenticated } = useConvexAuth();
   const navigate = useNavigate();
@@ -102,12 +103,20 @@ export function Dashboard() {
                 : `${presentations.length} presentation${presentations.length !== 1 ? "s" : ""}`}
             </p>
           </div>
-          <Button asChild className="rounded-full px-6 gap-2">
-            <Link to="/chat">
-              <Plus className="h-4 w-4" />
-              New presentation
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" className="rounded-full px-5 gap-2">
+              <Link to="/themes">
+                <Palette className="h-4 w-4" />
+                New theme
+              </Link>
+            </Button>
+            <Button asChild className="rounded-full px-6 gap-2">
+              <Link to="/chat">
+                <Plus className="h-4 w-4" />
+                New presentation
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {/* Presentations grid */}
@@ -184,6 +193,81 @@ export function Dashboard() {
             ))}
           </div>
         )}
+
+        {/* My Themes preview */}
+        <div className="mb-14 animate-fade-in">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-text-primary flex items-center gap-2">
+              <Palette className="h-4 w-4 text-text-tertiary" />
+              My Themes
+            </h2>
+            <Link
+              to="/themes"
+              className="text-xs text-coral hover:text-coral-dark transition-colors font-medium"
+            >
+              {themes.length > 0 ? "View all →" : "Create →"}
+            </Link>
+          </div>
+          {themes.length === 0 ? (
+            <Link
+              to="/themes"
+              className="flex items-center gap-4 p-5 bg-surface-elevated rounded-2xl border border-border-light shadow-card hover:shadow-card-hover transition-all hover:-translate-y-0.5 group"
+            >
+              <div className="h-12 w-12 rounded-xl gradient-coral flex items-center justify-center shadow-sm shrink-0">
+                <Palette className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-text-primary group-hover:text-coral transition-colors">
+                  Create your first theme
+                </p>
+                <p className="text-xs text-text-tertiary">
+                  Describe a mood and let AI design colors, fonts, and layout
+                </p>
+              </div>
+              <span className="text-text-tertiary text-sm opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
+                →
+              </span>
+            </Link>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {themes.slice(0, 4).map((t) => (
+                <Link
+                  key={t._id}
+                  to="/themes"
+                  className="bg-surface-elevated rounded-xl border border-border-light shadow-card hover:shadow-card-hover transition-all hover:-translate-y-0.5 overflow-hidden group"
+                >
+                  <div
+                    className="h-16 p-3 flex items-end"
+                    style={{ backgroundColor: t.colors.background }}
+                  >
+                    <span
+                      className="text-[10px] font-bold truncate"
+                      style={{ color: t.colors.accent }}
+                    >
+                      Aa
+                    </span>
+                  </div>
+                  <div className="p-3">
+                    <p className="text-xs font-medium truncate text-text-primary group-hover:text-coral transition-colors">
+                      {t.name}
+                    </p>
+                    <div className="flex items-center gap-0.5 mt-1.5">
+                      {[t.colors.background, t.colors.accent, t.colors.foreground, t.colors.muted].map(
+                        (c, i) => (
+                          <div
+                            key={i}
+                            className="h-2 flex-1 first:rounded-l-full last:rounded-r-full"
+                            style={{ backgroundColor: c }}
+                          />
+                        )
+                      )}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Recent conversations */}
         {conversations.length > 0 && (

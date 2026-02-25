@@ -6,6 +6,7 @@ import { Chat } from "./routes/chat";
 import { ChatSession } from "./routes/chatSession";
 import { Present } from "./routes/present";
 import { Settings } from "./routes/settings";
+import { Themes } from "./routes/themes";
 
 export default function App() {
   return (
@@ -18,6 +19,9 @@ export default function App() {
         <Route path="/chat" element={<Chat />} />
         <Route path="/chat/:conversationId" element={<ChatSession />} />
         <Route path="/p/:slug" element={<Present />} />
+        <Route path="/themes" element={<Themes />} />
+        <Route path="/themes/new" element={<Themes />} />
+        <Route path="/themes/:themeId/edit" element={<Themes />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

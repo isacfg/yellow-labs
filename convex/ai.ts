@@ -13,6 +13,7 @@ import type { GenericActionCtx } from "convex/server";
 import type { DataModel } from "./_generated/dataModel";
 import type { Id } from "./_generated/dataModel";
 import { SYSTEM_PROMPT } from "./skill/content";
+import type { Doc } from "./_generated/dataModel";
 
 // ─── Tool definition ────────────────────────────────────────────────────────
 
@@ -192,6 +193,44 @@ function generateSlug(): string {
 
 // ─── Shared streaming logic ───────────────────────────────────────────────────
 
+function buildThemePromptAddendum(theme: Doc<"themes">): string {
+  return [
+    `\n\n## User's Selected Theme — USE THIS EXCLUSIVELY`,
+    `The user has pre-selected a custom theme. You MUST use these exact colors, fonts, and spacing.`,
+    `**SKIP Phase 2 (Style Discovery) entirely** — do NOT ask about mood/vibe or generate style previews.`,
+    `Go directly from Phase 1 (Content Discovery) to Phase 3 (Generate Presentation).`,
+    ``,
+    `### Theme: "${theme.name}"`,
+    theme.description ? `Description: ${theme.description}` : "",
+    ``,
+    `### CSS Variables (inject into the <style> block of the HTML):`,
+    "```css",
+    theme.cssVariables,
+    "```",
+    ``,
+    `### Fonts`,
+    `- Display / Headings: ${theme.fonts.display}`,
+    `- Body / Paragraphs: ${theme.fonts.body}`,
+    `- Import both from Google Fonts in the <head>`,
+    ``,
+    `### Colors`,
+    `- Background: ${theme.colors.background}`,
+    `- Foreground: ${theme.colors.foreground}`,
+    `- Accent: ${theme.colors.accent}`,
+    `- Accent Foreground: ${theme.colors.accentForeground}`,
+    `- Muted: ${theme.colors.muted}`,
+    `- Muted Foreground: ${theme.colors.mutedForeground}`,
+    `- Surface: ${theme.colors.surface}`,
+    `- Surface Foreground: ${theme.colors.surfaceForeground}`,
+    `- Border: ${theme.colors.border}`,
+    ``,
+    `### Spacing: ${theme.spacing}`,
+    theme.layoutStyle ? `### Layout Style: ${theme.layoutStyle}` : "",
+    ``,
+    `Use var(--theme-*) variables throughout. Every slide must be visually consistent with this theme.`,
+  ].filter(Boolean).join("\n");
+}
+
 async function runStreaming(
   ctx: GenericActionCtx<DataModel>,
   history: ModelMessage[],
@@ -200,6 +239,7 @@ async function runStreaming(
   userId: Id<"users">,
   convTitle: string | undefined,
   userAIConfig: UserAIConfig,
+  theme?: Doc<"themes"> | null,
 ): Promise<void> {
   const model = createModel(userAIConfig);
 
@@ -220,9 +260,15 @@ async function runStreaming(
     textBuffer = "";
   };
 
+  // Inject theme into system prompt if available
+  let systemPrompt = SYSTEM_PROMPT;
+  if (theme) {
+    systemPrompt += buildThemePromptAddendum(theme);
+  }
+
   const result = streamText({
     model,
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     messages: history,
     tools: { askUserQuestion: ASK_USER_QUESTION_TOOL },
     maxOutputTokens: 16000,
@@ -276,6 +322,7 @@ async function runStreaming(
         title,
         htmlContent,
         slug,
+        themeId: theme?._id,
       });
     }
   }
@@ -351,7 +398,18 @@ export const sendMessage = action({
       googleApiKey: aiConfig.googleApiKey,
     };
 
-    // 7. Stream AI response
+    // 7. Load theme if conversation has one
+    const conv2 = await ctx.runQuery(api.conversations.get, {
+      conversationId: args.conversationId,
+    });
+    let theme: Doc<"themes"> | null = null;
+    if (conv2?.themeId) {
+      theme = await ctx.runQuery(internal.themes.getInternal, {
+        themeId: conv2.themeId,
+      });
+    }
+
+    // 8. Stream AI response
     await runStreaming(
       ctx,
       history,
@@ -360,6 +418,7 @@ export const sendMessage = action({
       userId,
       conv?.title,
       userAIConfig,
+      theme,
     );
 
     return null;
@@ -407,10 +466,18 @@ export const answerQuestion = action({
       googleApiKey: aiConfig.googleApiKey,
     };
 
-    // 6. Continue streaming
+    // 6. Load theme if conversation has one
     const conv = await ctx.runQuery(api.conversations.get, {
       conversationId: args.conversationId,
     });
+    let theme: Doc<"themes"> | null = null;
+    if (conv?.themeId) {
+      theme = await ctx.runQuery(internal.themes.getInternal, {
+        themeId: conv.themeId,
+      });
+    }
+
+    // 7. Continue streaming
     await runStreaming(
       ctx,
       history,
@@ -418,6 +485,564 @@ export const answerQuestion = action({
       args.conversationId,
       userId,
       conv?.title,
+      userAIConfig,
+      theme,
+    );
+
+    return null;
+  },
+});
+
+// ─── Theme generation ─────────────────────────────────────────────────────────
+
+const THEME_SYSTEM_PROMPT = `You are a world-class visual theme designer for HTML presentations.
+The user will describe a mood, vibe, or aesthetic direction, and you must generate a complete theme.
+
+Return ONLY valid JSON (no markdown fences, no explanation) with this exact structure:
+{
+  "name": "Theme Name (2-3 words, evocative)",
+  "colors": {
+    "background": "#hex",
+    "foreground": "#hex",
+    "accent": "#hex",
+    "accentForeground": "#hex",
+    "muted": "#hex",
+    "mutedForeground": "#hex",
+    "surface": "#hex",
+    "surfaceForeground": "#hex",
+    "border": "#hex"
+  },
+  "fonts": {
+    "display": "Google Font Name for headings",
+    "body": "Google Font Name for body text"
+  },
+  "spacing": "compact" | "balanced" | "spacious",
+  "layoutStyle": "centered" | "split-panel" | "asymmetric" | "editorial" | "grid" | "terminal",
+  "previewHtml": "<full self-contained HTML document showing a single sample slide with this theme applied>"
+}
+
+Design principles:
+- Colors must have sufficient contrast (WCAG AA minimum)
+- Font pairs should complement each other (display = distinctive, body = readable)
+- Use Google Fonts only (widely available)
+- The previewHtml must be a complete <!DOCTYPE html> document with embedded CSS using the theme colors/fonts
+- The preview should show a realistic slide with a title, subtitle, body text, and an accent element
+- Make themes distinctive and bold — avoid generic corporate palettes
+- Dark themes: ensure background is truly dark (#0a-#1a range), text is light
+- Light themes: ensure background is light (#f0-#ff range), text is dark
+- Accent colors should POP against the background`;
+
+const THEME_REFINE_SYSTEM_PROMPT = `You are a world-class visual theme designer. The user has an existing theme and wants to refine it.
+You will receive the current theme JSON and the user's refinement instruction.
+
+Return ONLY valid JSON (no markdown fences) with the COMPLETE theme structure (same as original but with changes applied).
+Keep all fields that weren't mentioned by the user. Only change what they asked for.
+Always regenerate the previewHtml to reflect the changes.
+
+Return the same JSON structure:
+{
+  "name": "string",
+  "colors": { background, foreground, accent, accentForeground, muted, mutedForeground, surface, surfaceForeground, border },
+  "fonts": { display, body },
+  "spacing": "compact" | "balanced" | "spacious",
+  "layoutStyle": "string",
+  "previewHtml": "full HTML document"
+}`;
+
+export const generateTheme = action({
+  args: { description: v.string() },
+  returns: v.object({
+    name: v.string(),
+    colors: v.object({
+      background: v.string(),
+      foreground: v.string(),
+      accent: v.string(),
+      accentForeground: v.string(),
+      muted: v.string(),
+      mutedForeground: v.string(),
+      surface: v.string(),
+      surfaceForeground: v.string(),
+      border: v.string(),
+    }),
+    fonts: v.object({
+      display: v.string(),
+      body: v.string(),
+    }),
+    spacing: v.union(
+      v.literal("compact"),
+      v.literal("balanced"),
+      v.literal("spacious"),
+    ),
+    layoutStyle: v.optional(v.string()),
+    previewHtml: v.optional(v.string()),
+  }),
+  handler: async (ctx, args) => {
+    const userId = await ctx.runQuery(internal.users.currentUserId);
+    if (!userId) throw new Error("Not authenticated");
+
+    const aiConfig = await ctx.runQuery(internal.users.getAIConfig, { userId });
+    const config: UserAIConfig = {
+      provider: aiConfig.selectedProvider ?? "anthropic",
+      model: aiConfig.selectedModel ?? "claude-sonnet-4-6",
+      anthropicApiKey: aiConfig.anthropicApiKey,
+      openaiApiKey: aiConfig.openaiApiKey,
+      googleApiKey: aiConfig.googleApiKey,
+    };
+
+    const model = createModel(config);
+    const result = await streamText({
+      model,
+      system: THEME_SYSTEM_PROMPT,
+      messages: [{ role: "user", content: args.description }],
+      maxOutputTokens: 8000,
+    });
+
+    let text = "";
+    for await (const chunk of result.fullStream) {
+      if (chunk.type === "text-delta") text += chunk.text;
+    }
+
+    // Extract JSON (handle possible markdown fences)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("Failed to generate theme — no JSON in response");
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      name: parsed.name,
+      colors: parsed.colors,
+      fonts: parsed.fonts,
+      spacing: parsed.spacing,
+      layoutStyle: parsed.layoutStyle,
+      previewHtml: parsed.previewHtml,
+    };
+  },
+});
+
+export const refineTheme = action({
+  args: {
+    themeId: v.id("themes"),
+    instruction: v.string(),
+  },
+  returns: v.object({
+    name: v.string(),
+    colors: v.object({
+      background: v.string(),
+      foreground: v.string(),
+      accent: v.string(),
+      accentForeground: v.string(),
+      muted: v.string(),
+      mutedForeground: v.string(),
+      surface: v.string(),
+      surfaceForeground: v.string(),
+      border: v.string(),
+    }),
+    fonts: v.object({
+      display: v.string(),
+      body: v.string(),
+    }),
+    spacing: v.union(
+      v.literal("compact"),
+      v.literal("balanced"),
+      v.literal("spacious"),
+    ),
+    layoutStyle: v.optional(v.string()),
+    previewHtml: v.optional(v.string()),
+  }),
+  handler: async (ctx, args) => {
+    const userId = await ctx.runQuery(internal.users.currentUserId);
+    if (!userId) throw new Error("Not authenticated");
+
+    const theme = await ctx.runQuery(internal.themes.getInternal, {
+      themeId: args.themeId,
+    });
+    if (!theme) throw new Error("Theme not found");
+
+    const aiConfig = await ctx.runQuery(internal.users.getAIConfig, { userId });
+    const config: UserAIConfig = {
+      provider: aiConfig.selectedProvider ?? "anthropic",
+      model: aiConfig.selectedModel ?? "claude-sonnet-4-6",
+      anthropicApiKey: aiConfig.anthropicApiKey,
+      openaiApiKey: aiConfig.openaiApiKey,
+      googleApiKey: aiConfig.googleApiKey,
+    };
+
+    const currentThemeJson = JSON.stringify({
+      name: theme.name,
+      colors: theme.colors,
+      fonts: theme.fonts,
+      spacing: theme.spacing,
+      layoutStyle: theme.layoutStyle,
+    }, null, 2);
+
+    const model = createModel(config);
+    const result = await streamText({
+      model,
+      system: THEME_REFINE_SYSTEM_PROMPT,
+      messages: [
+        { role: "user", content: `Current theme:\n${currentThemeJson}\n\nRefinement: ${args.instruction}` },
+      ],
+      maxOutputTokens: 8000,
+    });
+
+    let text = "";
+    for await (const chunk of result.fullStream) {
+      if (chunk.type === "text-delta") text += chunk.text;
+    }
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("Failed to refine theme — no JSON in response");
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      name: parsed.name,
+      colors: parsed.colors,
+      fonts: parsed.fonts,
+      spacing: parsed.spacing,
+      layoutStyle: parsed.layoutStyle,
+      previewHtml: parsed.previewHtml,
+    };
+  },
+});
+
+// ─── Theme Chat (Question-based theme creation) ───────────────────────────────
+
+const THEME_CHAT_SYSTEM_PROMPT = `You are a world-class visual theme designer for HTML presentations. Your job is to help users create their perfect theme by asking questions and understanding their preferences.
+
+## Your Process
+
+1. **FIRST MESSAGE**: When the user starts a new conversation (their first message), you MUST use the askUserQuestion tool to ask about their preferences. Ask 2-4 questions at once to gather information about:
+   - **Color mood**: Dark/light, warm/cool, vibrant/muted
+   - **Industry/context**: Tech, creative, corporate, education, etc.
+   - **Font style**: Modern, classic, playful, minimalist, bold
+   - **Overall vibe**: Professional, friendly, elegant, edgy, etc.
+
+2. **AFTER ANSWERS**: Once you have the user's answers, generate the perfect theme based on their preferences. Return ONLY valid JSON (no markdown fences) with this exact structure:
+
+\`\`\`json
+{
+  "name": "Theme Name (2-3 words, evocative)",
+  "description": "A brief description of the theme's personality",
+  "colors": {
+    "background": "#hex",
+    "foreground": "#hex",
+    "accent": "#hex",
+    "accentForeground": "#hex",
+    "muted": "#hex",
+    "mutedForeground": "#hex",
+    "surface": "#hex",
+    "surfaceForeground": "#hex",
+    "border": "#hex"
+  },
+  "fonts": {
+    "display": "Google Font Name for headings",
+    "body": "Google Font Name for body text"
+  },
+  "spacing": "compact" | "balanced" | "spacious",
+  "layoutStyle": "centered" | "split-panel" | "asymmetric" | "editorial" | "grid" | "terminal",
+  "previewHtml": "<full self-contained HTML document showing a single sample slide>"
+}
+\`\`\`
+
+## Design Principles
+- Colors must have sufficient contrast (WCAG AA minimum)
+- Font pairs should complement each other (display = distinctive, body = readable)
+- Use Google Fonts only (widely available)
+- The previewHtml must be a complete <!DOCTYPE html> document with embedded CSS
+- The preview should show a realistic slide with title, subtitle, body text, and accent element
+- Make themes distinctive and bold — avoid generic palettes
+- Dark themes: background truly dark (#0a-#1a range), text light
+- Light themes: background light (#f0-#ff range), text dark
+- Accent colors should POP against the background
+
+## Question Guidelines
+When using askUserQuestion:
+- Keep questions concise and engaging
+- Provide 3-5 clear options per question
+- Include brief descriptions for each option
+- Make options mutually exclusive (not multiSelect) unless explicitly needed
+
+Remember: ALWAYS use askUserQuestion on the first interaction to gather preferences!`;
+
+// Helper to detect theme JSON in response
+function detectThemeJson(content: string): boolean {
+  const jsonMatch = content.match(/\{[\s\S]*"colors"[\s\S]*"fonts"[\s\S]*\}/);
+  return jsonMatch !== null;
+}
+
+// Helper to extract and parse theme JSON
+function extractThemeJson(content: string): {
+  name: string;
+  description?: string;
+  colors: {
+    background: string;
+    foreground: string;
+    accent: string;
+    accentForeground: string;
+    muted: string;
+    mutedForeground: string;
+    surface: string;
+    surfaceForeground: string;
+    border: string;
+  };
+  fonts: { display: string; body: string };
+  spacing: "compact" | "balanced" | "spacious";
+  layoutStyle?: string;
+  previewHtml?: string;
+} | null {
+  const jsonMatch = content.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    return null;
+  }
+}
+
+// Build history for theme chat (simpler than presentations)
+function buildThemeChatHistory(
+  msgs: {
+    _id: string;
+    role: "user" | "assistant";
+    content: string;
+    isStreaming: boolean;
+    toolCallId?: string;
+    toolCallInput?: string;
+    toolResultFor?: string;
+  }[],
+): ModelMessage[] {
+  return msgs.map((m): ModelMessage => {
+    // Assistant message with tool call
+    if (m.toolCallId && m.toolCallInput) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parts: any[] = [];
+        if (m.content) parts.push({ type: "text", text: m.content });
+        parts.push({
+          type: "tool-call",
+          toolCallId: m.toolCallId,
+          toolName: "askUserQuestion",
+          input: JSON.parse(m.toolCallInput),
+        });
+        return { role: "assistant", content: parts };
+      } catch {
+        // Malformed — fall through
+      }
+    }
+
+    // Tool result message
+    if (m.toolResultFor) {
+      return {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: m.toolResultFor,
+            toolName: "askUserQuestion",
+            output: { type: "text", value: m.content },
+          },
+        ],
+      };
+    }
+
+    // Plain message
+    return { role: m.role, content: m.content };
+  });
+}
+
+// Streaming logic for theme chat
+async function runThemeChatStreaming(
+  ctx: GenericActionCtx<DataModel>,
+  history: ModelMessage[],
+  assistantMsgId: Id<"themeMessages">,
+  conversationId: Id<"themeConversations">,
+  userId: Id<"users">,
+  userAIConfig: UserAIConfig,
+): Promise<void> {
+  const model = createModel(userAIConfig);
+
+  let fullContent = "";
+  let textBuffer = "";
+  let toolCallDetected: {
+    id: string;
+    name: string;
+    input: unknown;
+  } | null = null;
+
+  const flushText = async () => {
+    if (!textBuffer) return;
+    await ctx.runMutation(internal.themeConversations.appendStream, {
+      messageId: assistantMsgId,
+      chunk: textBuffer,
+    });
+    textBuffer = "";
+  };
+
+  const result = streamText({
+    model,
+    system: THEME_CHAT_SYSTEM_PROMPT,
+    messages: history,
+    tools: { askUserQuestion: ASK_USER_QUESTION_TOOL },
+    maxOutputTokens: 10000,
+  });
+
+  for await (const chunk of result.fullStream) {
+    if (chunk.type === "text-delta") {
+      const text = chunk.text;
+      fullContent += text;
+      textBuffer += text;
+      if (textBuffer.length >= 1000) {
+        await flushText();
+      }
+    } else if (chunk.type === "tool-call") {
+      toolCallDetected = {
+        id: chunk.toolCallId,
+        name: chunk.toolName,
+        input: chunk.input,
+      };
+    }
+  }
+
+  // Flush remaining text
+  await flushText();
+
+  if (toolCallDetected) {
+    // Model called askUserQuestion — save and pause
+    await ctx.runMutation(internal.themeConversations.saveToolCall, {
+      messageId: assistantMsgId,
+      toolCallId: toolCallDetected.id,
+      toolCallInput: JSON.stringify(toolCallDetected.input),
+    });
+  } else {
+    // Check if response contains theme JSON  
+    const hasThemeResult = detectThemeJson(fullContent);
+    await ctx.runMutation(internal.themeConversations.finalize, {
+      messageId: assistantMsgId,
+      hasThemeResult,
+    });
+
+    // If theme was generated, save it
+    if (hasThemeResult) {
+      const themeData = extractThemeJson(fullContent);
+      if (themeData) {
+        const themeId = await ctx.runMutation(api.themes.create, {
+          name: themeData.name,
+          description: themeData.description,
+          colors: themeData.colors,
+          fonts: themeData.fonts,
+          spacing: themeData.spacing,
+          layoutStyle: themeData.layoutStyle,
+          previewHtml: themeData.previewHtml,
+        });
+        await ctx.runMutation(internal.themeConversations.setGeneratedTheme, {
+          conversationId,
+          themeId,
+        });
+      }
+    }
+  }
+}
+
+export const sendThemeMessage = action({
+  args: {
+    conversationId: v.id("themeConversations"),
+    userContent: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // 1. Auth check
+    const userId = await ctx.runQuery(internal.users.currentUserId);
+    if (!userId) throw new Error("Not authenticated");
+
+    // 2. Save user message
+    await ctx.runMutation(api.themeConversations.addUserMessage, {
+      conversationId: args.conversationId,
+      content: args.userContent,
+    });
+
+    // 3. Load conversation history
+    const rawHistory = await ctx.runQuery(internal.themeConversations.listForAI, {
+      conversationId: args.conversationId,
+    });
+    const history = buildThemeChatHistory(rawHistory);
+
+    // 4. Create empty assistant message
+    const assistantMsgId = await ctx.runMutation(
+      internal.themeConversations.createAssistantMessage,
+      { conversationId: args.conversationId },
+    );
+
+    // 5. Resolve user AI config
+    const aiConfig = await ctx.runQuery(internal.users.getAIConfig, { userId });
+    const userAIConfig: UserAIConfig = {
+      provider: aiConfig.selectedProvider ?? "anthropic",
+      model: aiConfig.selectedModel ?? "claude-sonnet-4-6",
+      anthropicApiKey: aiConfig.anthropicApiKey,
+      openaiApiKey: aiConfig.openaiApiKey,
+      googleApiKey: aiConfig.googleApiKey,
+    };
+
+    // 6. Stream AI response
+    await runThemeChatStreaming(
+      ctx,
+      history,
+      assistantMsgId,
+      args.conversationId,
+      userId,
+      userAIConfig,
+    );
+
+    return null;
+  },
+});
+
+export const answerThemeQuestion = action({
+  args: {
+    conversationId: v.id("themeConversations"),
+    toolCallId: v.string(),
+    answers: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // 1. Auth check
+    const userId = await ctx.runQuery(internal.users.currentUserId);
+    if (!userId) throw new Error("Not authenticated");
+
+    // 2. Save tool result message
+    await ctx.runMutation(internal.themeConversations.saveToolResult, {
+      conversationId: args.conversationId,
+      toolCallId: args.toolCallId,
+      content: args.answers,
+    });
+
+    // 3. Load full conversation history
+    const rawHistory = await ctx.runQuery(internal.themeConversations.listForAI, {
+      conversationId: args.conversationId,
+    });
+    const history = buildThemeChatHistory(rawHistory);
+
+    // 4. Create empty assistant message
+    const assistantMsgId = await ctx.runMutation(
+      internal.themeConversations.createAssistantMessage,
+      { conversationId: args.conversationId },
+    );
+
+    // 5. Resolve user AI config
+    const aiConfig = await ctx.runQuery(internal.users.getAIConfig, { userId });
+    const userAIConfig: UserAIConfig = {
+      provider: aiConfig.selectedProvider ?? "anthropic",
+      model: aiConfig.selectedModel ?? "claude-sonnet-4-6",
+      anthropicApiKey: aiConfig.anthropicApiKey,
+      openaiApiKey: aiConfig.openaiApiKey,
+      googleApiKey: aiConfig.googleApiKey,
+    };
+
+    // 6. Continue streaming
+    await runThemeChatStreaming(
+      ctx,
+      history,
+      assistantMsgId,
+      args.conversationId,
+      userId,
       userAIConfig,
     );
 

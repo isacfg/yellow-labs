@@ -97,6 +97,7 @@ export const save = internalMutation({
     title: v.string(),
     htmlContent: v.string(),
     slug: v.string(),
+    themeId: v.optional(v.id("themes")),
   },
   returns: v.id("presentations"),
   handler: async (ctx, args) => {

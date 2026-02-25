@@ -30,14 +30,13 @@ const MODELS: Record<Provider, { id: string; label: string }[]> = {
         { id: "claude-opus-4-6", label: "Claude Opus 4.6 (Premium)" },
     ],
     openai: [
-        { id: "gpt-4o-mini", label: "GPT-4o Mini (Fast)" },
-        { id: "gpt-4o", label: "GPT-4o (Smart)" },
-        { id: "o3-mini", label: "o3-mini (Reasoning)" },
+        { id: "gpt-5-nano-2025-08-07", label: "GPT-5 Nano (Fast)" },
+        { id: "gpt-5-mini-2025-08-07", label: "GPT-5 Mini (Smart)" },
+        { id: "gpt-5.2-2025-12-11", label: "GPT-5.2 (Premium)" },
     ],
     google: [
-        { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash (Fast)" },
-        { id: "gemini-2.0-flash-thinking-exp", label: "Gemini 2.0 Flash Thinking (Reasoning)" },
-        { id: "gemini-2.0-pro-exp", label: "Gemini 2.0 Pro (Premium)" },
+        { id: "gemini-3-flash-preview", label: "Gemini 3 Flash (Fast)" },
+        { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Premium)" },
     ],
 };
 
