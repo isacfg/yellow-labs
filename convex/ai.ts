@@ -12,7 +12,8 @@ import { z } from "zod";
 import type { GenericActionCtx } from "convex/server";
 import type { DataModel } from "./_generated/dataModel";
 import type { Id } from "./_generated/dataModel";
-import { SYSTEM_PROMPT } from "./skill/content";
+import { SYSTEM_PROMPT, buildSmartEditPrompt } from "./skill/content";
+import { extractSlideMap } from "./editEngine";
 import type { Doc } from "./_generated/dataModel";
 
 // ─── Tool definition ────────────────────────────────────────────────────────
@@ -40,6 +41,40 @@ const ASK_USER_QUESTION_TOOL = tool({
             .describe("Whether the user can select multiple options"),
         }),
       ),
+    }),
+  ),
+});
+
+// ─── Smart Edit tool definition ──────────────────────────────────────────────
+
+const EDIT_PRESENTATION_TOOL = tool({
+  description:
+    "Apply surgical edits to an existing presentation's HTML. Use this in Smart Edit mode to make targeted changes without regenerating the entire document. Operations are applied sequentially.",
+  inputSchema: zodSchema(
+    z.object({
+      operations: z.array(
+        z.discriminatedUnion("type", [
+          z.object({
+            type: z.literal("searchReplace"),
+            search: z.string().describe("Exact text to find in the HTML (include surrounding tags for uniqueness)"),
+            replace: z.string().describe("Replacement text"),
+          }),
+          z.object({
+            type: z.literal("replaceSlide"),
+            slideIndex: z.number().describe("0-based index of the slide to replace"),
+            newHtml: z.string().describe("Complete new <section class=\"slide\">...</section> HTML"),
+          }),
+          z.object({
+            type: z.literal("insertSlide"),
+            afterIndex: z.number().describe("Insert after this slide index (-1 for start)"),
+            html: z.string().describe("Complete <section class=\"slide\">...</section> HTML to insert"),
+          }),
+          z.object({
+            type: z.literal("deleteSlide"),
+            slideIndex: z.number().describe("0-based index of the slide to remove"),
+          }),
+        ]),
+      ).describe("Array of edit operations to apply sequentially"),
     }),
   ),
 });
@@ -293,6 +328,7 @@ async function runStreaming(
   convTitle: string | undefined,
   userAIConfig: UserAIConfig,
   theme?: Doc<"themes"> | null,
+  smartEditMode?: boolean,
 ): Promise<void> {
   const model = createModel(userAIConfig);
 
@@ -319,12 +355,43 @@ async function runStreaming(
     systemPrompt += buildThemePromptAddendum(theme);
   }
 
+  // Build tools based on mode
+  const tools: Record<string, typeof ASK_USER_QUESTION_TOOL> = {
+    askUserQuestion: ASK_USER_QUESTION_TOOL,
+  };
+
+  let maxOutputTokens = 16000;
+
+  // Smart Edit mode: inject slide map + current HTML context + edit tool
+  if (smartEditMode) {
+    const currentPres = await ctx.runQuery(
+      internal.presentations.getLatestByConversation,
+      { conversationId },
+    );
+    if (currentPres) {
+      const slideMap = extractSlideMap(currentPres.htmlContent);
+      systemPrompt += buildSmartEditPrompt(slideMap);
+
+      // Inject the current HTML as context in the history
+      history = [
+        ...history,
+        {
+          role: "user",
+          content: `[CURRENT PRESENTATION HTML — reference this for editPresentation operations]\n\n${currentPres.htmlContent}`,
+        } as ModelMessage,
+      ];
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (tools as any).editPresentation = EDIT_PRESENTATION_TOOL;
+    maxOutputTokens = 8000; // Edits need fewer tokens
+  }
+
   const result = streamText({
     model,
     system: systemPrompt,
     messages: history,
-    tools: { askUserQuestion: ASK_USER_QUESTION_TOOL },
-    maxOutputTokens: 16000,
+    tools,
+    maxOutputTokens,
   });
 
   for await (const chunk of result.fullStream) {
@@ -348,12 +415,87 @@ async function runStreaming(
   await flushText();
 
   if (toolCallDetected) {
-    // Model called askUserQuestion — save tool call and pause
-    await ctx.runMutation(internal.messages.saveToolCall, {
-      messageId: assistantMsgId,
-      toolCallId: toolCallDetected.id,
-      toolCallInput: JSON.stringify(toolCallDetected.input),
-    });
+    if (toolCallDetected.name === "editPresentation") {
+      // Smart Edit tool — apply edits immediately server-side
+      const editInput = toolCallDetected.input as {
+        operations: Array<{
+          type: string;
+          search?: string;
+          replace?: string;
+          slideIndex?: number;
+          newHtml?: string;
+          afterIndex?: number;
+          html?: string;
+        }>;
+      };
+
+      // Save tool call on the message for history
+      await ctx.runMutation(internal.messages.saveToolCall, {
+        messageId: assistantMsgId,
+        toolCallId: toolCallDetected.id,
+        toolCallInput: JSON.stringify(toolCallDetected.input),
+      });
+
+      // Get current presentation and apply edits
+      const currentPres = await ctx.runQuery(
+        internal.presentations.getLatestByConversation,
+        { conversationId },
+      );
+
+      if (currentPres) {
+        try {
+          await ctx.runMutation(internal.presentations.applyEdits, {
+            presentationId: currentPres._id,
+            operations: editInput.operations.map((op) => {
+              if (op.type === "searchReplace") {
+                return { type: "searchReplace" as const, search: op.search ?? "", replace: op.replace ?? "" };
+              } else if (op.type === "replaceSlide") {
+                return { type: "replaceSlide" as const, slideIndex: op.slideIndex ?? 0, newHtml: op.newHtml ?? "" };
+              } else if (op.type === "insertSlide") {
+                return { type: "insertSlide" as const, afterIndex: op.afterIndex ?? 0, html: op.html ?? "" };
+              } else {
+                return { type: "deleteSlide" as const, slideIndex: op.slideIndex ?? 0 };
+              }
+            }),
+            conversationId,
+            userId,
+          });
+
+          // Save a synthetic tool result so the AI history is coherent
+          await ctx.runMutation(internal.messages.saveToolResult, {
+            conversationId,
+            toolCallId: toolCallDetected.id,
+            content: `Successfully applied ${editInput.operations.length} edit(s) to the presentation.`,
+          });
+
+          // Finalize with smart edit flag
+          await ctx.runMutation(internal.messages.finalize, {
+            messageId: assistantMsgId,
+            hasStylePreviews: false,
+            hasFinalPresentation: false,
+            hasSmartEdit: true,
+          });
+        } catch (error) {
+          const errMsg = error instanceof Error ? error.message : String(error);
+          await ctx.runMutation(internal.messages.appendStream, {
+            messageId: assistantMsgId,
+            chunk: `\n\n⚠️ Edit failed: ${errMsg}`,
+          });
+          await ctx.runMutation(internal.messages.finalize, {
+            messageId: assistantMsgId,
+            hasStylePreviews: false,
+            hasFinalPresentation: false,
+          });
+        }
+      }
+    } else {
+      // askUserQuestion tool — save tool call and pause
+      await ctx.runMutation(internal.messages.saveToolCall, {
+        messageId: assistantMsgId,
+        toolCallId: toolCallDetected.id,
+        toolCallInput: JSON.stringify(toolCallDetected.input),
+      });
+    }
   } else {
     // Normal text response — finalize
     const hasStylePreviews = detectStylePreviews(fullContent);
@@ -397,6 +539,7 @@ export const sendMessage = action({
     ),
     attachmentName: v.optional(v.string()),
     attachmentText: v.optional(v.string()),
+    smartEditMode: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -474,6 +617,7 @@ export const sendMessage = action({
         conv?.title,
         userAIConfig,
         theme,
+        args.smartEditMode,
       );
     } catch (error) {
       await ctx.runMutation(internal.messages.appendStream, {

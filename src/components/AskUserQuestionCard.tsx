@@ -1,3 +1,7 @@
+import { useState } from "react";
+
+const OUTRO_LABEL = "Outro";
+
 interface Option {
   label: string;
   description: string;
@@ -29,6 +33,8 @@ export function AskUserQuestionCard({
   onSubmit,
   disabled = false,
 }: AskUserQuestionCardProps) {
+  const [outroTexts, setOutroTexts] = useState<Record<number, string>>({});
+
   const question = questions[currentQuestionIdx];
   if (!question) return null;
 
@@ -36,7 +42,9 @@ export function AskUserQuestionCard({
   const selectedLabels = rawSelection ? rawSelection.split(",").map((s) => s.trim()) : [];
   const isMultiSelect = question.multiSelect === true;
   const isLastQuestion = currentQuestionIdx === questions.length - 1;
-  const canAdvance = selectedLabels.length > 0 && !disabled;
+  const isOutroSelected = selectedLabels.includes(OUTRO_LABEL);
+  const outroText = outroTexts[currentQuestionIdx] ?? "";
+  const canAdvance = selectedLabels.length > 0 && !disabled && (!isOutroSelected || outroText.trim().length > 0);
 
   return (
     <div className="bg-surface-elevated border border-border-light rounded-2xl rounded-tl-md overflow-hidden shadow-card">
@@ -108,12 +116,68 @@ export function AskUserQuestionCard({
             </button>
           );
         })}
+
+        {/* Outro option — always appended */}
+        <button
+          onClick={() => {
+            if (disabled) return;
+            if (isMultiSelect) {
+              const newSelections = isOutroSelected
+                ? selectedLabels.filter((l) => l !== OUTRO_LABEL)
+                : [...selectedLabels, OUTRO_LABEL];
+              onAnswer(currentQuestionIdx, newSelections.join(", "));
+            } else {
+              onAnswer(currentQuestionIdx, OUTRO_LABEL);
+            }
+          }}
+          disabled={disabled}
+          className={[
+            "text-left rounded-xl border px-3.5 py-2.5 transition-all",
+            isOutroSelected
+              ? "border-coral bg-coral/8 shadow-sm"
+              : "border-border-light hover:border-coral/40",
+            disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+          ].join(" ")}
+        >
+          <p className={`text-sm font-semibold ${isOutroSelected ? "text-coral" : "text-text-primary"}`}>
+            {isMultiSelect ? (isOutroSelected ? "✓ " : "◻ ") : ""}Outro
+          </p>
+          <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">
+            Digite sua própria resposta
+          </p>
+        </button>
       </div>
+
+      {isOutroSelected && (
+        <div className="px-4 pb-3">
+          <input
+            autoFocus
+            type="text"
+            value={outroText}
+            onChange={(e) => {
+              setOutroTexts((prev) => ({ ...prev, [currentQuestionIdx]: e.target.value }));
+            }}
+            placeholder="Digite aqui..."
+            disabled={disabled}
+            className="w-full rounded-xl border border-border-light bg-surface px-3.5 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-coral transition-colors"
+          />
+        </div>
+      )}
 
       {/* Action button */}
       <div className="border-t border-border-light px-4 py-3 flex justify-end">
         <button
-          onClick={isLastQuestion ? onSubmit : onNext}
+          onClick={() => {
+            if (isOutroSelected) {
+              const resolved = selectedLabels
+                .map((l) => (l === OUTRO_LABEL ? outroText : l))
+                .filter(Boolean)
+                .join(", ");
+              onAnswer(currentQuestionIdx, resolved);
+            }
+            if (isLastQuestion) onSubmit();
+            else onNext();
+          }}
           disabled={!canAdvance}
           className={[
             "text-sm font-semibold px-4 py-2 rounded-xl transition-all",

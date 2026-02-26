@@ -54,6 +54,8 @@ export default defineSchema({
     toolCallId: v.optional(v.string()),      // Anthropic tool_use id
     toolCallInput: v.optional(v.string()),   // JSON of the questions array
     toolResultFor: v.optional(v.string()),   // tool_use_id this row answers
+    // Smart edits flag
+    hasSmartEdit: v.optional(v.boolean()),
   }).index("by_conversation", ["conversationId"]),
 
   presentations: defineTable({
@@ -64,9 +66,13 @@ export default defineSchema({
     slug: v.string(),
     createdAt: v.number(),
     themeId: v.optional(v.id("themes")),
+    // Smart edits versioning
+    parentId: v.optional(v.id("presentations")),
+    version: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
-    .index("by_slug", ["slug"]),
+    .index("by_slug", ["slug"])
+    .index("by_conversation", ["conversationId"]),
 
   themes: defineTable({
     userId: v.id("users"),

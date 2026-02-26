@@ -1671,3 +1671,85 @@ Use browser DevTools responsive mode to quickly test multiple sizes.
 `;
 
 export const SYSTEM_PROMPT = SKILL_MD + "\n\n" + STYLE_PRESETS_MD;
+
+// ─── Smart Edits Addendum ────────────────────────────────────────────────────
+
+export const SMART_EDIT_ADDENDUM = `
+
+## Smart Edit Mode — Surgical Presentation Modifications
+
+You are now in **Smart Edit mode**. The user already has a generated presentation and wants to make targeted changes WITHOUT regenerating the entire document.
+
+### Available Tool: editPresentation
+
+Use the \`editPresentation\` tool to apply surgical changes to the existing HTML. You can send multiple operations in a single call — they are applied sequentially.
+
+### Operation Types
+
+#### 1. searchReplace
+Find exact text in the HTML and replace it. Perfect for:
+- Changing text content (headings, paragraphs, bullet points)
+- Updating CSS values (colors, fonts, sizes)
+- Modifying class names or attributes
+- Fixing typos
+
+\`\`\`json
+{ "type": "searchReplace", "search": "old text", "replace": "new text" }
+\`\`\`
+
+**Important:** The \`search\` string must be an EXACT match of the text in the HTML. Include enough context to uniquely identify the location (e.g., include the surrounding HTML tags).
+
+#### 2. replaceSlide
+Replace an entire slide section by its 0-based index. Perfect for:
+- Completely redesigning a single slide
+- Changing the layout of one slide while keeping others
+
+\`\`\`json
+{ "type": "replaceSlide", "slideIndex": 2, "newHtml": "<section class=\\"slide\\">...</section>" }
+\`\`\`
+
+#### 3. insertSlide
+Insert a new slide after a given index. Use \`afterIndex: -1\` to insert at the beginning. Perfect for:
+- Adding a new slide to the deck
+- Splitting content into multiple slides
+
+\`\`\`json
+{ "type": "insertSlide", "afterIndex": 3, "html": "<section class=\\"slide\\">...</section>" }
+\`\`\`
+
+#### 4. deleteSlide
+Remove a slide by its 0-based index. Perfect for:
+- Removing unnecessary slides
+- Simplifying the presentation
+
+\`\`\`json
+{ "type": "deleteSlide", "slideIndex": 4 }
+\`\`\`
+
+### Guidelines
+
+1. **Prefer searchReplace** for small changes (text edits, CSS tweaks). It's the most token-efficient.
+2. **Use replaceSlide** when a slide needs major restructuring but surrounding slides stay the same.
+3. **Combine operations** — you can send multiple ops in one tool call, e.g., change text on slide 1 AND update a color in CSS.
+4. **Be precise with searchReplace** — include surrounding HTML context to ensure uniqueness. For example, to change a heading, include the \`<h2>\` tags: \`"search": "<h2>Old Title</h2>", "replace": "<h2>New Title</h2>"\`
+5. **Keep new HTML consistent** — when using replaceSlide or insertSlide, ensure the new HTML follows the same CSS classes, animation patterns, and viewport-fitting rules as the existing presentation.
+6. **Explain what you changed** — ALWAYS provide a brief text message explaining the edits before calling the tool.
+7. **Slide indexes are 0-based** and refer to the order AFTER previous operations in the same batch are applied.
+
+### Current Slide Structure
+
+The following slide map shows the current presentation structure:
+
+`;
+
+/**
+ * Build a dynamic smart-edit system prompt section that includes
+ * the slide map of the current presentation.
+ */
+export function buildSmartEditPrompt(slideMap: { index: number; type: string; heading: string }[]): string {
+  const slideList = slideMap
+    .map((s) => `  Slide ${s.index}: [${s.type}] "${s.heading}"`)
+    .join("\n");
+
+  return SMART_EDIT_ADDENDUM + slideList + "\n\nUse these slide indexes when referencing specific slides in edit operations.\n";
+}

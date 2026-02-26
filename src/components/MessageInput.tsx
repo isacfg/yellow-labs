@@ -1,5 +1,5 @@
 import { useState, useRef, type KeyboardEvent } from "react";
-import { Send, Loader2, Sparkles, Paperclip, X, FileText } from "lucide-react";
+import { Send, Loader2, Sparkles, Paperclip, X, FileText, Pencil, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   extractFileImages,
@@ -34,12 +34,21 @@ interface MessageInputProps {
   ) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** Whether the conversation already has a generated presentation */
+  hasPresentation?: boolean;
+  /** Current smart edit mode state */
+  smartEditMode?: boolean;
+  /** Toggle smart edit mode */
+  onToggleSmartEdit?: () => void;
 }
 
 export function MessageInput({
   onSend,
   disabled = false,
   placeholder = "Describe your presentation…",
+  hasPresentation = false,
+  smartEditMode = false,
+  onToggleSmartEdit,
 }: MessageInputProps) {
   const [value, setValue] = useState("");
   const [attachment, setAttachment] = useState<AttachmentImages | null>(null);
@@ -154,6 +163,38 @@ export function MessageInput({
   return (
     <div className="px-6 pb-6 pt-3 bg-surface border-t border-border-light">
       <div className="max-w-3xl mx-auto">
+        {/* Smart Edit / Regenerate switch — only visible when a presentation exists */}
+        {hasPresentation && onToggleSmartEdit && (
+          <div className="flex items-center justify-center mb-4">
+            <div className="flex items-center p-1 bg-surface-elevated border border-border-light rounded-xl shadow-sm">
+              <button
+                onClick={() => smartEditMode && onToggleSmartEdit()}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200",
+                  !smartEditMode
+                    ? "bg-white dark:bg-surface shadow-sm text-text-primary"
+                    : "text-text-tertiary hover:text-text-secondary"
+                )}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Regenerate
+              </button>
+              <button
+                onClick={() => !smartEditMode && onToggleSmartEdit()}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200",
+                  smartEditMode
+                    ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 shadow-sm"
+                    : "text-text-tertiary hover:text-text-secondary"
+                )}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Smart Edit
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Attachment preview strip */}
         {attachment && (
           <div className="flex items-center gap-2 mb-2 px-1">

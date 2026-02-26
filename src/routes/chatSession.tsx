@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -23,6 +23,38 @@ export function ChatSession() {
       ? { conversationId: conversationId as Id<"conversations"> }
       : "skip"
   );
+  const previewIframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    const handleArrowNavigation = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (!presentation) return;
+
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const isTypingTarget =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        target?.isContentEditable === true;
+      if (isTypingTarget) return;
+
+      const frameWindow = previewIframeRef.current?.contentWindow;
+      if (!frameWindow) return;
+
+      event.preventDefault();
+      frameWindow.focus();
+      frameWindow.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: event.key,
+          code: event.key,
+          bubbles: true,
+        }),
+      );
+    };
+
+    window.addEventListener("keydown", handleArrowNavigation);
+    return () => window.removeEventListener("keydown", handleArrowNavigation);
+  }, [presentation]);
 
   useEffect(() => {
     if (user === null) {
@@ -125,6 +157,7 @@ export function ChatSession() {
             {presentation ? (
               <iframe
                 key={presentation._id}
+                ref={previewIframeRef}
                 srcDoc={presentation.htmlContent}
                 sandbox="allow-scripts allow-same-origin"
                 className="absolute inset-0 w-full h-full border-0"

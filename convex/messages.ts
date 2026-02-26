@@ -25,6 +25,7 @@ export const list = query({
       toolCallId: v.optional(v.string()),
       toolCallInput: v.optional(v.string()),
       toolResultFor: v.optional(v.string()),
+      hasSmartEdit: v.optional(v.boolean()),
     })
   ),
   handler: async (ctx, args) => {
@@ -106,6 +107,7 @@ export const finalize = internalMutation({
     messageId: v.id("messages"),
     hasStylePreviews: v.boolean(),
     hasFinalPresentation: v.boolean(),
+    hasSmartEdit: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -113,6 +115,7 @@ export const finalize = internalMutation({
       isStreaming: false,
       hasStylePreviews: args.hasStylePreviews,
       hasFinalPresentation: args.hasFinalPresentation,
+      hasSmartEdit: args.hasSmartEdit,
     });
     return null;
   },

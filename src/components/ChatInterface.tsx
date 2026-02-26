@@ -23,6 +23,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
   const [styleSelectDisabled, setStyleSelectDisabled] = useState(false);
   const [pendingAnswers, setPendingAnswers] = useState<Record<number, string>>({});
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
+  const [smartEditMode, setSmartEditMode] = useState(false);
 
   // Auto-scroll on new content
   useEffect(() => {
@@ -67,6 +68,7 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
         attachmentImages: attachment?.pageImages,
         attachmentName: attachment?.name,
         attachmentText: attachment?.textContent,
+        smartEditMode: smartEditMode || undefined,
       });
     } catch (err) {
       console.error("Failed to send message:", err);
@@ -188,8 +190,13 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
         placeholder={
           messages.length === 0
             ? "Describe your presentation topic, audience, and goals..."
-            : "Continue the conversation..."
+            : smartEditMode
+              ? "Describe the change you want (e.g., 'change slide 2 heading to...')"
+              : "Continue the conversation..."
         }
+        hasPresentation={!!presentation}
+        smartEditMode={smartEditMode}
+        onToggleSmartEdit={() => setSmartEditMode((m) => !m)}
       />
     </div>
   );

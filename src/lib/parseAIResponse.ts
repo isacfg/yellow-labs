@@ -1,7 +1,8 @@
 export type ParsedResponse =
   | { type: "text"; content: string }
   | { type: "stylePreviews"; previews: string[]; names: string[] }
-  | { type: "finalPresentation"; html: string; textBefore: string };
+  | { type: "finalPresentation"; html: string; textBefore: string }
+  | { type: "smartEdit"; content: string };
 
 function extractOptionNames(content: string, count: number): string[] {
   // Match "Option 1 — Name:" or "Option 1 - Name:" patterns (bold or plain)
@@ -14,7 +15,12 @@ function extractOptionNames(content: string, count: number): string[] {
   return Array.from({ length: count }, (_, i) => `Option ${i + 1}`);
 }
 
-export function parseAIResponse(content: string): ParsedResponse {
+export function parseAIResponse(content: string, hasSmartEdit?: boolean): ParsedResponse {
+  // Smart edit messages — the AI explained edits and called the tool
+  if (hasSmartEdit) {
+    return { type: "smartEdit", content };
+  }
+
   // Check for style previews: 3 HTML fenced code blocks FIRST
   const htmlBlockRegex = /```html\n([\s\S]*?)```/g;
   const blocks: string[] = [];

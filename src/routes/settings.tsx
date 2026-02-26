@@ -117,16 +117,21 @@ export function Settings() {
     syncAISettings();
 
     const handleProviderChange = (provider: Provider) => {
+        const nextModel = MODELS[provider][0].id;
         setSelectedProvider(provider);
-        // Reset model to first option for the new provider
-        setSelectedModel(MODELS[provider][0].id);
+        setSelectedModel(nextModel);
+        void saveProviderAndModel(provider, nextModel);
     };
 
-    const handleSaveProviderAndModel = async () => {
+    const handleModelChange = (model: string) => {
+        setSelectedModel(model);
+        void saveProviderAndModel(selectedProvider, model);
+    };
+
+    const saveProviderAndModel = async (provider: Provider, model: string) => {
         setSavingProvider(true);
         try {
-            await updateAISettings({ selectedProvider, selectedModel });
-            showToast("AI provider saved");
+            await updateAISettings({ selectedProvider: provider, selectedModel: model });
         } catch {
             showToast("Failed to save provider", "error");
         } finally {
@@ -597,7 +602,7 @@ export function Settings() {
                                     </label>
                                     <select
                                         value={selectedModel}
-                                        onChange={(e) => setSelectedModel(e.target.value)}
+                                        onChange={(e) => handleModelChange(e.target.value)}
                                         className="w-full h-10 px-3 rounded-xl border border-border bg-surface text-sm font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-coral/30 focus:border-coral transition-all"
                                         id="settings-model-select"
                                     >
@@ -607,20 +612,12 @@ export function Settings() {
                                     </select>
                                 </div>
                             </div>
-                            <Button
-                                size="sm"
-                                onClick={handleSaveProviderAndModel}
-                                disabled={savingProvider}
-                                className="rounded-xl gap-1.5"
-                                id="settings-save-provider-btn"
-                            >
-                                {savingProvider ? (
+                            {savingProvider && (
+                                <div className="inline-flex items-center gap-2 text-xs text-text-tertiary">
                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                    <Check className="h-3.5 w-3.5" />
-                                )}
-                                Save provider &amp; model
-                            </Button>
+                                    Saving provider...
+                                </div>
+                            )}
 
                             {/* BYOK API Keys */}
                             <div className="border-t border-border-light pt-5">

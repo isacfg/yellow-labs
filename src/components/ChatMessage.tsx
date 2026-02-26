@@ -1,6 +1,7 @@
 import { parseAIResponse } from "@/lib/parseAIResponse";
 import { StylePreviewGrid } from "./StylePreviewGrid";
 import { PresentationCard } from "./PresentationCard";
+import { SmartEditCard } from "./SmartEditCard";
 import { Loader2, Sparkles, Paperclip } from "lucide-react";
 import { AskUserQuestionCard } from "./AskUserQuestionCard";
 import type { AskUserQuestion } from "./AskUserQuestionCard";
@@ -17,6 +18,7 @@ interface Message {
   toolCallId?: string;
   toolCallInput?: string;
   toolResultFor?: string;
+  hasSmartEdit?: boolean;
 }
 
 interface PresentationRef {
@@ -80,7 +82,7 @@ export function ChatMessage({
   }
 
   // Assistant message
-  const parsed = parseAIResponse(message.content);
+  const parsed = parseAIResponse(message.content, message.hasSmartEdit);
 
   return (
     <div className="flex justify-start mb-5 animate-fade-in">
@@ -104,8 +106,20 @@ export function ChatMessage({
 
         {/* Content */}
         <div className="ml-9">
+          {/* Smart Edit tool call — show edit card (distinct from askUserQuestion) */}
+          {message.hasSmartEdit && message.toolCallId && (
+            <>
+              {message.content && (
+                <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                  {message.content}
+                </div>
+              )}
+              <SmartEditCard toolCallInput={message.toolCallInput} />
+            </>
+          )}
+
           {/* AskUserQuestion tool call */}
-          {message.toolCallId && message.toolCallInput && (() => {
+          {!message.hasSmartEdit && message.toolCallId && message.toolCallInput && (() => {
             let questions: AskUserQuestion[] = [];
             try {
               const parsed = JSON.parse(message.toolCallInput) as { questions: AskUserQuestion[] };
@@ -143,6 +157,17 @@ export function ChatMessage({
                                 {selected.includes(opt.label) ? "✓ " : ""}{opt.label}
                               </span>
                             ))}
+                            {selected
+                              .filter((s) => !q.options.some((o) => o.label === s))
+                              .map((custom) => (
+                                <span
+                                  key={custom}
+                                  className="text-xs px-2.5 py-1 rounded-lg bg-coral/10 text-coral font-semibold italic"
+                                >
+                                  ✓ "{custom}"
+                                </span>
+                              ))
+                            }
                           </div>
                         </div>
                       );
@@ -174,7 +199,7 @@ export function ChatMessage({
           })()}
 
           {/* Normal text/stylePreviews/finalPresentation — only if no tool call */}
-          {!message.toolCallId && (
+          {!message.toolCallId && !message.hasSmartEdit && (
             <>
               {parsed.type === "text" && (
                 <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
