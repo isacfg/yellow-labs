@@ -5,6 +5,7 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { ChatMessage } from "./ChatMessage";
 import { MessageInput } from "./MessageInput";
 import { Sparkles } from "lucide-react";
+import { parseAIResponse } from "@/lib/parseAIResponse";
 
 interface ChatInterfaceProps {
   conversationId: Id<"conversations">;
@@ -79,7 +80,22 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps) {
 
   const handleStyleSelect = async (index: number) => {
     setStyleSelectDisabled(true);
-    await handleSend(`I choose option ${index + 1}`);
+
+    // Find the last style preview message and extract the chosen preview's
+    // name + HTML so the AI unambiguously knows which style was selected,
+    // even when multiple batches of previews exist in the conversation.
+    const lastStyleMsg = [...messages].reverse().find((m) => m.hasStylePreviews);
+    let choiceText = `I choose option ${index + 1}`;
+
+    if (lastStyleMsg) {
+      const parsed = parseAIResponse(lastStyleMsg.content);
+      if (parsed.type === "stylePreviews" && parsed.previews[index]) {
+        const name = parsed.names[index] || `Option ${index + 1}`;
+        choiceText = `I choose the style "${name}" from the latest set of previews you showed me. Here is the exact HTML of my chosen style:\n\n\`\`\`html\n${parsed.previews[index]}\`\`\`\n\nPlease generate the full presentation using this exact style.`;
+      }
+    }
+
+    await handleSend(choiceText);
   };
 
   const handleAnswer = (questionIdx: number, label: string) => {

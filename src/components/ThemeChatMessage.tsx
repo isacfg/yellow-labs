@@ -1,6 +1,7 @@
 import { Loader2, Palette, Check } from "lucide-react";
 import { AskUserQuestionCard } from "./AskUserQuestionCard";
 import type { AskUserQuestion } from "./AskUserQuestionCard";
+import { MarkdownContent } from "./MarkdownContent";
 
 interface Message {
   _id: string;
@@ -129,8 +130,8 @@ export function ThemeChatMessage({
                 return (
                   <>
                     {message.content && (
-                      <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap mb-3 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
-                        {message.content}
+                      <div className="text-sm leading-relaxed text-text-primary mb-3 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                        <MarkdownContent content={message.content} />
                       </div>
                     )}
                     <div className="bg-surface-elevated border border-border-light rounded-2xl rounded-tl-md overflow-hidden shadow-card">
@@ -174,8 +175,8 @@ export function ThemeChatMessage({
               return (
                 <>
                   {message.content && (
-                    <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap mb-3 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
-                      {message.content}
+                    <div className="text-sm leading-relaxed text-text-primary mb-3 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                      <MarkdownContent content={message.content} />
                     </div>
                   )}
                   <AskUserQuestionCard
@@ -198,8 +199,8 @@ export function ThemeChatMessage({
                 <>
                   {/* Extract text before JSON (if any) */}
                   {extractTextBeforeJson(message.content) && (
-                    <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap mb-4 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
-                      {extractTextBeforeJson(message.content)}
+                    <div className="text-sm leading-relaxed text-text-primary mb-4 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                      <MarkdownContent content={extractTextBeforeJson(message.content)!} />
                     </div>
                   )}
                   {/* Theme card */}
@@ -254,8 +255,8 @@ export function ThemeChatMessage({
                   Generating your theme...
                 </div>
               ) : (
-                <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
-                  {message.content}
+                <div className="text-sm leading-relaxed text-text-primary bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                  <MarkdownContent content={message.content} />
                   {message.isStreaming && (
                     <span className="inline-block w-0.5 h-3.5 bg-coral animate-pulse ml-0.5 rounded-full" />
                   )}

@@ -2,6 +2,7 @@ import { parseAIResponse } from "@/lib/parseAIResponse";
 import { StylePreviewGrid } from "./StylePreviewGrid";
 import { PresentationCard } from "./PresentationCard";
 import { SmartEditCard } from "./SmartEditCard";
+import { MarkdownContent } from "./MarkdownContent";
 import { Loader2, Sparkles, Paperclip } from "lucide-react";
 import { AskUserQuestionCard } from "./AskUserQuestionCard";
 import type { AskUserQuestion } from "./AskUserQuestionCard";
@@ -110,8 +111,8 @@ export function ChatMessage({
           {message.hasSmartEdit && message.toolCallId && (
             <>
               {message.content && (
-                <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
-                  {message.content}
+                <div className="text-sm leading-relaxed text-text-primary bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                  <MarkdownContent content={message.content} />
                 </div>
               )}
               <SmartEditCard toolCallInput={message.toolCallInput} />
@@ -134,8 +135,8 @@ export function ChatMessage({
               return (
                 <>
                   {message.content && (
-                    <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap mb-3 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
-                      {message.content}
+                    <div className="text-sm leading-relaxed text-text-primary mb-3 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                      <MarkdownContent content={message.content} />
                     </div>
                   )}
                   <div className="bg-surface-elevated border border-border-light rounded-2xl rounded-tl-md overflow-hidden shadow-card">
@@ -181,8 +182,8 @@ export function ChatMessage({
             return (
               <>
                 {message.content && (
-                  <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap mb-3 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
-                    {message.content}
+                  <div className="text-sm leading-relaxed text-text-primary mb-3 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                    <MarkdownContent content={message.content} />
                   </div>
                 )}
                 <AskUserQuestionCard
@@ -202,8 +203,8 @@ export function ChatMessage({
           {!message.toolCallId && !message.hasSmartEdit && (
             <>
               {parsed.type === "text" && (
-                <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
-                  {message.content}
+                <div className="text-sm leading-relaxed text-text-primary bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                  <MarkdownContent content={message.content} />
                   {message.isStreaming && (
                     <span className="inline-block w-[2px] h-3.5 bg-coral animate-pulse ml-0.5 rounded-full" />
                   )}
@@ -213,8 +214,8 @@ export function ChatMessage({
               {parsed.type === "stylePreviews" && (
                 <>
                   {message.content.split("```html")[0].trim() && (
-                    <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap mb-4 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
-                      {message.content.split("```html")[0].trim()}
+                    <div className="text-sm leading-relaxed text-text-primary mb-4 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                      <MarkdownContent content={message.content.split("```html")[0].trim()} />
                     </div>
                   )}
                   {!message.isStreaming && onStyleSelect && (
@@ -237,8 +238,8 @@ export function ChatMessage({
               {parsed.type === "finalPresentation" && (
                 <>
                   {parsed.textBefore && (
-                    <div className="text-sm leading-relaxed text-text-primary whitespace-pre-wrap mb-4 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
-                      {parsed.textBefore}
+                    <div className="text-sm leading-relaxed text-text-primary mb-4 bg-surface-elevated rounded-2xl rounded-tl-md px-4 py-3 border border-border-light shadow-card">
+                      <MarkdownContent content={parsed.textBefore} />
                     </div>
                   )}
                   {message.isStreaming ? (
