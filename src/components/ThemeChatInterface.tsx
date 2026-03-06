@@ -3,7 +3,7 @@ import { useQuery, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { ThemeChatMessage } from "@/components/ThemeChatMessage";
-import { Send, Palette } from "lucide-react";
+import { Send, Palette, AlertCircle } from "lucide-react";
 
 interface ThemeChatInterfaceProps {
   conversationId: Id<"themeConversations">;
@@ -32,10 +32,21 @@ export function ThemeChatInterface({
   const inputRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pendingAnswers, setPendingAnswers] = useState<Record<number, string>>(
     {}
   );
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
+
+  const getErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message.trim()) {
+      return error.message;
+    }
+    if (typeof error === "string" && error.trim()) {
+      return error;
+    }
+    return fallback;
+  };
 
   // Auto-scroll on new content
   useEffect(() => {
@@ -76,6 +87,7 @@ export function ThemeChatInterface({
     if (!input.trim() || isSending || isStreaming) return;
     const content = input.trim();
     setInput("");
+    setErrorMessage(null);
     setIsSending(true);
     try {
       await sendMessage({
@@ -84,6 +96,10 @@ export function ThemeChatInterface({
       });
     } catch (err) {
       console.error("Failed to send message:", err);
+      setErrorMessage(
+        getErrorMessage(err, "Couldn't send your message. Please try again.")
+      );
+      setInput(content);
     } finally {
       setIsSending(false);
     }
@@ -103,6 +119,7 @@ export function ThemeChatInterface({
       .map(([, label]) => label)
       .join("\n");
 
+    setErrorMessage(null);
     setIsSending(true);
     try {
       await answerQuestion({
@@ -114,6 +131,9 @@ export function ThemeChatInterface({
       setCurrentQuestionIdx(0);
     } catch (err) {
       console.error("Failed to submit answers:", err);
+      setErrorMessage(
+        getErrorMessage(err, "Couldn't submit answers. Please try again.")
+      );
     } finally {
       setIsSending(false);
     }
@@ -190,6 +210,21 @@ export function ThemeChatInterface({
       {/* Input */}
       <div className="border-t border-border-light bg-surface px-6 py-4">
         <div className="max-w-3xl mx-auto">
+          {errorMessage && (
+            <div
+              role="alert"
+              className="mb-3 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm flex items-start gap-2"
+            >
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <div className="flex-1 leading-relaxed">{errorMessage}</div>
+              <button
+                onClick={() => setErrorMessage(null)}
+                className="text-xs font-medium hover:text-red-800 transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
           <div className="flex items-center gap-3">
             <input
               ref={inputRef}

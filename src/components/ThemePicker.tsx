@@ -51,7 +51,7 @@ export function ThemePicker({
           "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border transition-all cursor-pointer",
           currentTheme
             ? "bg-coral/8 border-coral/20 text-coral hover:bg-coral/12"
-            : "bg-surface border-border-light text-text-tertiary hover:text-text-secondary hover:border-text-tertiary"
+            : "bg-coral/5 border-coral/30 text-coral hover:bg-coral/10 hover:border-coral/50"
         )}
       >
         {currentTheme ? (
@@ -76,7 +76,7 @@ export function ThemePicker({
         ) : (
           <>
             <Palette className="h-3 w-3" />
-            <span>Theme</span>
+            <span>Apply theme</span>
           </>
         )}
         <ChevronDown
@@ -91,16 +91,21 @@ export function ThemePicker({
       {isOpen && (
         <div className="absolute top-full mt-2 right-0 w-72 bg-surface-elevated border border-border-light rounded-2xl shadow-card-hover z-50 animate-scale-in overflow-hidden">
           {/* Header */}
-          <div className="px-4 py-3 border-b border-border-light flex items-center justify-between">
-            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-              Select Theme
-            </span>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="text-text-tertiary hover:text-text-secondary transition-colors cursor-pointer"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+          <div className="px-4 py-3 border-b border-border-light">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
+                Select Theme
+              </span>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="text-text-tertiary hover:text-text-secondary transition-colors cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <p className="text-[10px] text-text-tertiary leading-relaxed">
+              The selected theme shapes the AI's color, font, and layout choices.
+            </p>
           </div>
 
           {/* Options */}

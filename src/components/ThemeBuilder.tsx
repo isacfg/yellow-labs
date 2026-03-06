@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   Sparkles,
   Save,
+  AlertCircle,
   RotateCcw,
   ChevronDown,
   ChevronUp,
@@ -132,10 +133,24 @@ export function ThemeBuilder({
   const [isRefining, setIsRefining] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showRefinement, setShowRefinement] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [history, setHistory] = useState<ThemeData[]>([]);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const previewRef = useRef<HTMLIFrameElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const getErrorMessage = useCallback(
+    (error: unknown, fallback: string) => {
+      if (error instanceof Error && error.message.trim()) {
+        return error.message;
+      }
+      if (typeof error === "string" && error.trim()) {
+        return error;
+      }
+      return fallback;
+    },
+    []
+  );
 
   // Rotate placeholder text
   useEffect(() => {
@@ -160,6 +175,7 @@ export function ThemeBuilder({
   }, [description, activeMoods]);
 
   const handleGenerate = useCallback(async () => {
+    setErrorMessage(null);
     setIsGenerating(true);
     try {
       const result = await generateTheme({ description: buildPrompt() });
@@ -176,13 +192,17 @@ export function ThemeBuilder({
       setShowRefinement(true);
     } catch (err) {
       console.error("Theme generation failed:", err);
+      setErrorMessage(
+        getErrorMessage(err, "Couldn't generate a theme. Please try again.")
+      );
     } finally {
       setIsGenerating(false);
     }
-  }, [generateTheme, buildPrompt, theme]);
+  }, [generateTheme, buildPrompt, theme, getErrorMessage]);
 
   const handleRefine = useCallback(async () => {
     if (!editingThemeId && !theme) return;
+    setErrorMessage(null);
     setIsRefining(true);
     try {
       let result;
@@ -209,13 +229,24 @@ export function ThemeBuilder({
       setRefinement("");
     } catch (err) {
       console.error("Theme refinement failed:", err);
+      setErrorMessage(
+        getErrorMessage(err, "Couldn't refine the theme. Please try again.")
+      );
     } finally {
       setIsRefining(false);
     }
-  }, [editingThemeId, theme, refinement, refineTheme, generateTheme]);
+  }, [
+    editingThemeId,
+    theme,
+    refinement,
+    refineTheme,
+    generateTheme,
+    getErrorMessage,
+  ]);
 
   const handleSave = useCallback(async () => {
     if (!theme) return;
+    setErrorMessage(null);
     setIsSaving(true);
     try {
       if (editingThemeId) {
@@ -244,6 +275,9 @@ export function ThemeBuilder({
       }
     } catch (err) {
       console.error("Theme save failed:", err);
+      setErrorMessage(
+        getErrorMessage(err, "Couldn't save the theme. Please try again.")
+      );
     } finally {
       setIsSaving(false);
     }
@@ -254,6 +288,7 @@ export function ThemeBuilder({
     updateTheme,
     createTheme,
     onSaved,
+    getErrorMessage,
   ]);
 
   const handleUndo = useCallback(() => {
@@ -370,6 +405,22 @@ export function ThemeBuilder({
             />
             {isGenerating ? "Generating..." : "Generate Theme"}
           </button>
+
+          {errorMessage && (
+            <div
+              role="alert"
+              className="mt-4 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm flex items-start gap-2"
+            >
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <div className="flex-1 leading-relaxed">{errorMessage}</div>
+              <button
+                onClick={() => setErrorMessage(null)}
+                className="text-xs font-medium hover:text-red-800 transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {/* ── Refinement Section ── */}
           {theme && showRefinement && (

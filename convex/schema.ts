@@ -101,6 +101,10 @@ export default defineSchema({
     layoutStyle: v.optional(v.string()),
     cssVariables: v.string(),
     previewHtml: v.optional(v.string()),
+    // Rich visual references extracted from the saved presentation:
+    previewSlideHtml: v.optional(v.string()),  // first slide <section>...</section>
+    presentationCss: v.optional(v.string()),   // full <style> block from the presentation
+    previewImageId: v.optional(v.id("_storage")), // screenshot of the first slide
     createdAt: v.number(),
   }).index("by_user", ["userId"]),
 

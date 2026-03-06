@@ -282,41 +282,82 @@ function formatAIError(error: unknown, provider: Provider): string {
 // ─── Shared streaming logic ───────────────────────────────────────────────────
 
 function buildThemePromptAddendum(theme: Doc<"themes">): string {
-  return [
-    `\n\n## User's Selected Theme — USE THIS EXCLUSIVELY`,
-    `The user has pre-selected a custom theme. You MUST use these exact colors, fonts, and spacing.`,
+  const themeAny = theme as typeof theme & {
+    presentationCss?: string;
+    previewSlideHtml?: string;
+  };
+  const hasFull = !!(themeAny.presentationCss || themeAny.previewSlideHtml);
+
+  const parts: string[] = [
+    `\n\n## User's Saved Theme — Reproduce This Style EXACTLY`,
+    `The user has a saved visual theme extracted from a previous presentation.`,
     `**SKIP Phase 2 (Style Discovery) entirely** — do NOT ask about mood/vibe or generate style previews.`,
     `Go directly from Phase 1 (Content Discovery) to Phase 3 (Generate Presentation).`,
     ``,
     `### Theme: "${theme.name}"`,
     theme.description ? `Description: ${theme.description}` : "",
     ``,
-    `### CSS Variables (inject into the <style> block of the HTML):`,
-    "```css",
-    theme.cssVariables,
-    "```",
-    ``,
-    `### Fonts`,
-    `- Display / Headings: ${theme.fonts.display}`,
-    `- Body / Paragraphs: ${theme.fonts.body}`,
-    `- Import both from Google Fonts in the <head>`,
-    ``,
-    `### Colors`,
-    `- Background: ${theme.colors.background}`,
-    `- Foreground: ${theme.colors.foreground}`,
-    `- Accent: ${theme.colors.accent}`,
-    `- Accent Foreground: ${theme.colors.accentForeground}`,
-    `- Muted: ${theme.colors.muted}`,
-    `- Muted Foreground: ${theme.colors.mutedForeground}`,
-    `- Surface: ${theme.colors.surface}`,
-    `- Surface Foreground: ${theme.colors.surfaceForeground}`,
-    `- Border: ${theme.colors.border}`,
-    ``,
-    `### Spacing: ${theme.spacing}`,
-    theme.layoutStyle ? `### Layout Style: ${theme.layoutStyle}` : "",
-    ``,
-    `Use var(--theme-*) variables throughout. Every slide must be visually consistent with this theme.`,
-  ].filter(Boolean).join("\n");
+  ];
+
+  if (hasFull) {
+    // High-fidelity mode: pass the real CSS + first slide as direct code reference
+    parts.push(
+      `### FULL CSS — copy ALL rules exactly (colors, fonts, animations, layout, backgrounds, effects, typography scale):`,
+      "```css",
+      themeAny.presentationCss ?? "",
+      "```",
+      ``,
+    );
+    if (themeAny.previewSlideHtml) {
+      parts.push(
+        `### First Slide HTML Structure — use this exact layout, class names, nesting, and visual composition as your template:`,
+        "```html",
+        themeAny.previewSlideHtml,
+        "```",
+        ``,
+      );
+    }
+    parts.push(
+      `**Reproduction rules:**`,
+      `- Copy the ENTIRE CSS block above into every new presentation — same variables, same class definitions, same animations, same background effects, same font sizes`,
+      `- Reproduce the SAME slide layout patterns shown in the first slide HTML above`,
+      `- Import the SAME fonts (${theme.fonts.display} for headings, ${theme.fonts.body} for body)`,
+      `- Keep the SAME color palette (background: ${theme.colors.background}, accent: ${theme.colors.accent})`,
+      `- Change ONLY the text content and data to match the new topic`,
+      `- Every slide must be visually indistinguishable in style from the saved presentation`,
+    );
+  } else {
+    // Fallback for themes created without presentation context
+    parts.push(
+      `### CSS Variables (inject into the <style> block of the HTML):`,
+      "```css",
+      theme.cssVariables,
+      "```",
+      ``,
+      `### Fonts`,
+      `- Display / Headings: ${theme.fonts.display}`,
+      `- Body / Paragraphs: ${theme.fonts.body}`,
+      `- Import both from Google Fonts in the <head>`,
+      ``,
+      `### Colors`,
+      `- Background: ${theme.colors.background}`,
+      `- Foreground: ${theme.colors.foreground}`,
+      `- Accent: ${theme.colors.accent}`,
+      `- Accent Foreground: ${theme.colors.accentForeground}`,
+      `- Muted: ${theme.colors.muted}`,
+      `- Muted Foreground: ${theme.colors.mutedForeground}`,
+      `- Surface: ${theme.colors.surface}`,
+      `- Surface Foreground: ${theme.colors.surfaceForeground}`,
+      `- Border: ${theme.colors.border}`,
+      ``,
+      `### Spacing: ${theme.spacing}`,
+      theme.layoutStyle ? `### Layout Style: ${theme.layoutStyle}` : "",
+      ``,
+      `Use var(--theme-*) variables throughout. Every slide must be visually consistent with this theme.`,
+    );
+  }
+
+  return parts.filter(Boolean).join("\n");
 }
 
 async function runStreaming(
@@ -353,6 +394,42 @@ async function runStreaming(
   let systemPrompt = SYSTEM_PROMPT;
   if (theme) {
     systemPrompt += buildThemePromptAddendum(theme);
+  }
+
+  // If the theme has a preview screenshot, prepend it as a vision message so
+  // Claude can see the exact visual style it needs to reproduce.
+  if (theme?.previewImageId) {
+    try {
+      const imageUrl = await ctx.runQuery(internal.themes.getPreviewImageUrl, {
+        previewImageId: theme.previewImageId,
+      });
+      if (imageUrl) {
+        const resp = await fetch(imageUrl);
+        const buffer = await resp.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString("base64");
+        const visionMsg = {
+          role: "user" as const,
+          content: [
+            {
+              type: "image" as const,
+              image: base64,
+              mediaType: "image/png" as const,
+            },
+            {
+              type: "text" as const,
+              text: "This is a screenshot of the first slide from my saved theme. Reproduce this EXACT visual style \u2014 the colors, typography, layout composition, background effects, and overall aesthetic \u2014 for every slide in my new presentation.",
+            },
+          ],
+        };
+        const ackMsg = {
+          role: "assistant" as const,
+          content: "I can see the visual style from your saved theme. I will faithfully reproduce these exact design patterns \u2014 the colors, typography, layout structure, background effects, and overall aesthetic \u2014 for every slide in your new presentation.",
+        };
+        history = [visionMsg, ackMsg, ...history];
+      }
+    } catch {
+      // Vision injection failed \u2014 continue with code context only
+    }
   }
 
   // Build tools based on mode
